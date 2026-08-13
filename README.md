@@ -108,6 +108,56 @@ npx eslint .
 npx jest --watchAll=false --ci
 ```
 
+## Running everything (exact terminals, in order)
+
+Several of the commands above are **long-running** — they block the terminal they're started in and must stay open the whole time you're using the app. This section ties them together so it's unambiguous what goes where.
+
+### Scenario 1 — Android emulator, same machine (simplest, good for a first check)
+
+Open **3 separate terminal windows**:
+
+**Terminal 1 — backend** (leave this running the whole time):
+```
+cd admill-platform/backend
+npm run dev
+```
+Wait until it prints that it's listening (e.g. `Server running on port 5000`) before moving on.
+
+**Terminal 2 — Metro bundler** (leave this running the whole time):
+```
+cd admill-platform/mobile
+npm start
+```
+Wait for Metro's splash screen/menu to appear.
+
+**Terminal 3 — build and launch** (this one runs, finishes, and exits — it does *not* need to stay open):
+```
+cd admill-platform/mobile
+npx react-native run-android
+```
+This installs and opens the app on whatever Android emulator/device is currently connected (check with `adb devices` first if unsure). The running app automatically talks to Terminal 2 (Metro, for the JS bundle) and Terminal 1 (the backend, via `http://10.0.2.2:5000` — the emulator's built-in alias for "this same machine").
+
+### Scenario 2 — physical Android phone, reachable from anywhere (ngrok)
+
+Same 3 terminals as Scenario 1, plus one more, and do this step **before** building:
+
+**Terminal 2.5 — ngrok tunnel** (leave this running the whole time):
+```
+ngrok http 5000
+```
+Copy the `https://*.ngrok-free.dev` URL it prints into `mobile/.env`'s `API_BASE_URL`/`SOCKET_URL` (see the section below) — do this *before* running Terminal 3's build command, so the app is built pointing at the right backend URL.
+
+Also, with the phone connected via USB: run `adb reverse tcp:8081 tcp:8081` once so the phone can reach Terminal 2's Metro, then continue with Terminal 3 (`npx react-native run-android`) as in Scenario 1.
+
+### Scenario 3 — a release APK on a physical phone (no Metro needed at all)
+
+Only **Terminal 1** (backend, or the ngrok tunnel from Scenario 2 if the phone isn't on the same WiFi) needs to be running once the APK is installed — a release build has the JS bundle compiled in, so there's no Metro/Terminal 2/Terminal 3 dependency after this one-time build step:
+```
+cd admill-platform/mobile/android
+./gradlew assembleRelease
+```
+Then copy `android/app/build/outputs/apk/release/app-release.apk` to the phone and install it directly (tap the file, or `adb install app-release.apk` over USB). From then on, just keep Terminal 1 (and the ngrok terminal, if used) running whenever the app needs to reach the backend.
+
 ## Making the backend reachable from a real phone ("going live" for testing)
 
 Everything above runs the backend on `localhost` — fine for an emulator on the same machine, not reachable from an actual phone unless it's tunneled or hosted somewhere. Two options, depending on what you need:
