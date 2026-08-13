@@ -9,6 +9,7 @@ import {
   Button,
   ErrorState,
   Header,
+  InlineError,
   LoadingState,
   SelectableChipGroup,
   TextInput,
@@ -177,11 +178,7 @@ export function VehicleFormScreen({ navigation, route }: Props) {
                     field.onChange(next);
                   }}
                 />
-                {!!fieldState.error && (
-                  <Text style={styles.error} variant="bodySmall">
-                    {fieldState.error.message}
-                  </Text>
-                )}
+                {!!fieldState.error && <InlineError>{fieldState.error.message}</InlineError>}
               </View>
             )}
           />
@@ -223,11 +220,7 @@ export function VehicleFormScreen({ navigation, route }: Props) {
             )}
           />
 
-          {!!submitError && (
-            <Text style={styles.error} variant="bodySmall">
-              {submitError}
-            </Text>
-          )}
+          {!!submitError && <InlineError>{submitError}</InlineError>}
 
           <Button
             variant="primary"

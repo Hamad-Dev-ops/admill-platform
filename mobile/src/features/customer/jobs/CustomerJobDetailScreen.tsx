@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  Avatar,
   Button,
   Card,
   ErrorState,
   Header,
+  InlineError,
   LoadingState,
   StarRatingInput,
   StatusChip,
@@ -23,6 +25,7 @@ import type { CustomerStackParamList } from '../../../navigation/customer/types'
 import { SocketService } from '../../../socket/SocketService';
 import type { GeoPoint } from '../../../types/api';
 import type { Job } from '../../../types/entities';
+import { getRoute } from '../../../utils/directions';
 import { JOB_STATUS_LABEL, JOB_STATUS_TONE } from '../../../utils/statusPresentation';
 import { SERVICE_TYPE_LABEL } from '../../owner/fleet/vehicleLabels';
 
@@ -77,6 +80,18 @@ export function CustomerJobDetailScreen({ navigation, route }: Props) {
     if (job?.driverId && payload.driverId === job.driverId) {
       setLiveDriverLocation(payload.location);
     }
+  });
+
+  // Pickup/destination are set at job creation and never change, so this is
+  // stable for the job's whole lifetime — unlike driver location, no status
+  // gating needed. getRoute() never throws; a null result (Directions/Routes
+  // API not configured, quota, timeout, no route found, ...) just means no
+  // polyline is drawn — the map already works fine without one (gap #6).
+  const routeQuery = useQuery({
+    queryKey: ['directions', jobId],
+    queryFn: () => getRoute(job!.pickupLocation.geo, job!.destinationLocation.geo),
+    enabled: !!job,
+    retry: false,
   });
 
   const cancelMutation = useMutation({
@@ -140,16 +155,23 @@ export function CustomerJobDetailScreen({ navigation, route }: Props) {
           </Card.Content>
         </Card>
 
-        {/* Markers only — no route polyline (no geometry from the backend,
-            gap #6) and no driver name/photo/rating anywhere (gap #13). */}
+        {/* Pickup/destination markers always shown; the route line (gap #6)
+            only renders once routeQuery actually resolves real geometry —
+            markers-only remains the fallback for a missing/misconfigured
+            key, quota, timeout, or no-route-found (src/utils/directions.ts
+            never throws, just resolves null). */}
         <View style={styles.mapWrap}>
           <MapView style={styles.map} initialRegion={regionFor(job)}>
+            {!!routeQuery.data && (
+              <Polyline coordinates={routeQuery.data} strokeColor={colors.ink} strokeWidth={4} />
+            )}
             <Marker
               coordinate={{
                 latitude: job.pickupLocation.geo.coordinates[1],
                 longitude: job.pickupLocation.geo.coordinates[0],
               }}
               title="Pickup"
+              accessibilityLabel="Pickup location"
               pinColor={colors.success}
             />
             <Marker
@@ -158,12 +180,14 @@ export function CustomerJobDetailScreen({ navigation, route }: Props) {
                 longitude: job.destinationLocation.geo.coordinates[0],
               }}
               title="Destination"
+              accessibilityLabel="Destination location"
               pinColor={colors.danger}
             />
             {driverMarker && (
               <Marker
                 coordinate={{ latitude: driverMarker.coordinates[1], longitude: driverMarker.coordinates[0] }}
                 title="Your driver"
+                accessibilityLabel="Your driver's current location"
                 pinColor={colors.primary}
               />
             )}
@@ -173,6 +197,26 @@ export function CustomerJobDetailScreen({ navigation, route }: Props) {
           <Text variant="bodySmall" style={styles.muted}>
             Live location isn't available until your driver is on the way.
           </Text>
+        )}
+
+        {job.assignedDriver && (
+          <Card>
+            <Card.Content style={[styles.cardContent, styles.driverRow]}>
+              <Avatar
+                name={`${job.assignedDriver.firstName} ${job.assignedDriver.lastName}`}
+                imageUrl={job.assignedDriver.profileImage}
+                size={48}
+              />
+              <View style={styles.driverInfo}>
+                <Text variant="titleSmall">
+                  {job.assignedDriver.firstName} {job.assignedDriver.lastName}
+                </Text>
+                <Text variant="bodySmall" style={styles.muted}>
+                  {job.assignedDriver.rating.toFixed(1)}★
+                </Text>
+              </View>
+            </Card.Content>
+          </Card>
         )}
 
         <Card>
@@ -204,11 +248,7 @@ export function CustomerJobDetailScreen({ navigation, route }: Props) {
           </Card>
         )}
 
-        {!!actionError && (
-          <Text style={styles.error} variant="bodySmall">
-            {actionError}
-          </Text>
-        )}
+        {!!actionError && <InlineError>{actionError}</InlineError>}
 
         {needsRating && (
           <Card>
@@ -312,6 +352,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   cardContent: { gap: spacing.xs },
+  driverRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  driverInfo: { gap: 2 },
   mapWrap: { height: 200, borderRadius: 12, overflow: 'hidden' },
   map: { flex: 1 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

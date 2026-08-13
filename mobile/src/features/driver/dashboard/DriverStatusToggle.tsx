@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SegmentedButtons, Text } from 'react-native-paper';
+import { SegmentedButtons } from 'react-native-paper';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { getApiErrorMessage } from '../../../api/client';
 import { updateMyDriverStatus, type SelfServiceDriverStatus } from '../../../api/drivers.api';
-import { colors, spacing } from '../../../design-system/tokens';
+import { InlineError } from '../../../components';
+import { spacing } from '../../../design-system/tokens';
 
 const STATUS_OPTIONS: { value: SelfServiceDriverStatus; label: string }[] = [
   { value: 'AVAILABLE', label: 'Available' },
@@ -47,16 +48,11 @@ export function DriverStatusToggle({ currentStatus, disabled }: DriverStatusTogg
           disabled: disabled || mutation.isPending,
         }))}
       />
-      {!!error && (
-        <Text variant="bodySmall" style={styles.error}>
-          {error}
-        </Text>
-      )}
+      {!!error && <InlineError>{error}</InlineError>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { gap: spacing.xs },
-  error: { color: colors.danger },
 });

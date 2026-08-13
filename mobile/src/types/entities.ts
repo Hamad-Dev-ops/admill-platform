@@ -168,7 +168,8 @@ export interface JobLocation {
 // populated (verified against job.repository.ts) — always raw ids. The
 // backend has no Owner-facing customer lookup at all (see GAP-REPORT.md
 // gap #11) — do not build UI that assumes a customer name/phone is
-// available here.
+// available here. assignedDriver (below) is the one deliberate exception —
+// a Gap #13 addition, name/photo/rating only, never email/phone.
 export interface Job extends BaseEntity {
   jobNumber: string;
   companyId: string;
@@ -190,6 +191,16 @@ export interface Job extends BaseEntity {
   completedAt?: string;
   cancelledAt?: string;
   cancellationReason?: string;
+  // GET /jobs/:id only (GAP-REPORT.md gap #13) — null before a driver is
+  // assigned, and once assigned, only ever the fields listed here.
+  assignedDriver?: JobAssignedDriver | null;
+}
+
+export interface JobAssignedDriver {
+  firstName: string;
+  lastName: string;
+  profileImage?: string;
+  rating: number;
 }
 
 export interface Notification extends BaseEntity {

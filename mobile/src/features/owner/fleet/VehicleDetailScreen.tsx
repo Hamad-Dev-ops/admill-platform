@@ -9,6 +9,7 @@ import {
   ErrorState,
   Header,
   IconButton,
+  InlineError,
   LoadingState,
   Modal,
   StatusChip,
@@ -75,6 +76,7 @@ export function VehicleDetailScreen({ navigation, route }: Props) {
         right={
           <IconButton
             icon="pencil-outline"
+            accessibilityLabel="Edit vehicle"
             onPress={() => navigation.navigate('VehicleForm', { vehicleId })}
           />
         }
@@ -134,11 +136,7 @@ export function VehicleDetailScreen({ navigation, route }: Props) {
         <Text variant="titleMedium" style={styles.sheetTitle}>
           Assign Driver
         </Text>
-        {!!assignError && (
-          <Text style={styles.error} variant="bodySmall">
-            {assignError}
-          </Text>
-        )}
+        {!!assignError && <InlineError>{assignError}</InlineError>}
         <ScrollView style={styles.sheetList}>
           {availableDrivers.length === 0 && (
             <Text style={styles.muted}>No drivers available to assign.</Text>

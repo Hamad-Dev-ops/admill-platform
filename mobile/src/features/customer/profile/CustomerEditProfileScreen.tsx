@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from 'react-native-paper';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, ErrorState, Header, LoadingState, TextInput } from '../../../components';
+import { Button, ErrorState, Header, InlineError, LoadingState, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { getMyCustomerProfile, updateMyCustomerProfile } from '../../../api/customers.api';
 import { colors, spacing } from '../../../design-system/tokens';
@@ -107,11 +106,7 @@ export function CustomerEditProfileScreen() {
               )}
             />
 
-            {!!submitError && (
-              <Text style={styles.error} variant="bodySmall">
-                {submitError}
-              </Text>
-            )}
+            {!!submitError && <InlineError>{submitError}</InlineError>}
 
             <Button
               variant="primary"

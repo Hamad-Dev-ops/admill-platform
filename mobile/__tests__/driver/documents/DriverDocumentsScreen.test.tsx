@@ -127,6 +127,25 @@ describe('DriverDocumentsScreen', () => {
     expect(mock.history.post[0].headers?.['Content-Type']).toMatch(/multipart\/form-data/);
   });
 
+  it('caps the picked photo to 1600x1600 while preserving quality/mediaType (Performance Audit F6)', async () => {
+    mock.onGet('/drivers/me').reply(200, { success: true, data: driverPayload() });
+    mock.onGet('/drivers/d1/documents').reply(200, { success: true, data: [] });
+    mockLaunchImageLibrary.mockResolvedValue({ didCancel: true });
+
+    const { getAllByText } = await renderScreen();
+
+    await waitFor(() => expect(getAllByText('Upload').length).toBe(4));
+    await fireEvent.press(getAllByText('Upload')[0]);
+
+    await waitFor(() => expect(mockLaunchImageLibrary).toHaveBeenCalledTimes(1));
+    expect(mockLaunchImageLibrary).toHaveBeenCalledWith({
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    });
+  });
+
   it('shows an error state when the driver profile fails to load', async () => {
     mock.onGet('/drivers/me').reply(500);
 

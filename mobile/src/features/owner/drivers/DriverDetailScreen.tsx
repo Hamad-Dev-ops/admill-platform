@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Avatar, Button, Card, ErrorState, Header, LoadingState, StatusChip, TextInput } from '../../../components';
+import { Avatar, Button, Card, ErrorState, Header, InlineError, LoadingState, StatusChip, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { approveDriver, getDriverById, rejectDriver } from '../../../api/drivers.api';
 import { colors, spacing } from '../../../design-system/tokens';
@@ -137,11 +137,7 @@ export function DriverDetailScreen({ navigation, route }: Props) {
           <Card>
             <Card.Content style={styles.cardContent}>
               <Text variant="titleSmall">Review Application</Text>
-              {!!actionError && (
-                <Text style={styles.error} variant="bodySmall">
-                  {actionError}
-                </Text>
-              )}
+              {!!actionError && <InlineError>{actionError}</InlineError>}
               {!showRejectInput ? (
                 <View style={styles.actionsRow}>
                   <Button

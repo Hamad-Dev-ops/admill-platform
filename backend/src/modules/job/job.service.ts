@@ -6,6 +6,7 @@ import { UserRole } from "../../constants/role.enum";
 import { VehicleStatus } from "../../constants/vehicle.enum";
 import { AppError } from "../../errors/AppError";
 import { IJob } from "../../interfaces/job.interface";
+import { IUser } from "../../interfaces/user.interface";
 import { CompanyRepository } from "../../repositories/company.repository";
 import { CompanySettingsRepository } from "../../repositories/companySettings.repository";
 import { CounterRepository } from "../../repositories/counter.repository";
@@ -126,6 +127,42 @@ async function resolveOperationalCompany() {
   return company;
 }
 
+// Gap #13 (GAP-REPORT.md) — the Customer active-job/tracking view's "who's my driver"
+// display. Deliberately just name/photo/rating, nothing else (no phone/email — no
+// call/message affordance exists; see driver.repository.ts's PUBLIC_IDENTITY_FIELDS).
+export interface IAssignedDriverSummary {
+  firstName: string;
+  lastName: string;
+  profileImage?: string;
+  rating: number;
+}
+
+async function getAssignedDriverSummary(driverId?: Types.ObjectId): Promise<IAssignedDriverSummary | null> {
+  if (!driverId) {
+    return null;
+  }
+
+  const driver = await DriverRepository.findByIdWithPublicIdentity(driverId);
+  if (!driver) {
+    return null;
+  }
+
+  // Statically typed as Types.ObjectId on IDriver (identity always lives on User, never
+  // duplicated — decision #1), but findByIdWithPublicIdentity's .populate() means this
+  // is genuinely a User document at runtime, narrowed to exactly the fields it selected.
+  const user = driver.userId as unknown as Pick<IUser, "firstName" | "lastName">;
+
+  return {
+    firstName: user.firstName,
+    lastName: user.lastName,
+    // Driver's own field, not User.profileImage — see driver.repository.ts's
+    // PUBLIC_IDENTITY_FIELDS comment for why (User.profileImage is never written
+    // anywhere in this codebase; PATCH /drivers/:id writes to this one).
+    profileImage: driver.profileImage,
+    rating: driver.rating,
+  };
+}
+
 export const JobService = {
   async create(customerUserId: string, input: CreateJobInput) {
     const customer = await CustomerRepository.findByUserId(customerUserId);
@@ -230,7 +267,15 @@ export const JobService = {
     }
 
     await this.assertJobAccess(requesterId, requesterRole, job);
-    return this.expireIfNeeded(job);
+    const current = await this.expireIfNeeded(job);
+
+    // Gap #13 — reuses the assertJobAccess check just above; nothing new to gate on.
+    // Whoever can legitimately reach this job at all (its customer, its assigned
+    // driver, or the owning company's OWNER) can see the assigned driver's public
+    // identity — the security boundary this gap actually cares about ("only THIS
+    // job's customer, never another one") was already enforced above.
+    const assignedDriver = await getAssignedDriverSummary(current.driverId);
+    return { ...current.toObject(), assignedDriver };
   },
 
   async accept(driverUserId: string, jobId: string) {

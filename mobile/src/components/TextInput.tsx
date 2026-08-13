@@ -12,7 +12,10 @@ export function TextInput({ errorText, ...rest }: TextInputProps) {
     <View>
       <PaperTextInput mode="outlined" error={!!errorText} {...rest} />
       {!!errorText && (
-        <HelperText type="error" visible>
+        // A validation error appearing (e.g. after blur, or a failed
+        // submit) needs to be announced — it isn't automatically linked to
+        // the field above the way an HTML aria-describedby would be.
+        <HelperText type="error" visible accessibilityLiveRegion="polite">
           {errorText}
         </HelperText>
       )}

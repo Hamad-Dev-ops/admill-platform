@@ -7,6 +7,15 @@ import MockAdapter from 'axios-mock-adapter';
 import { apiClient, configureApiClient } from '../../../src/api/client';
 import { DriverJobDetailScreen } from '../../../src/features/driver/jobs/DriverJobDetailScreen';
 
+// getRoute is unit-tested exhaustively in __tests__/utils/directions.test.ts
+// (real fetch mocking, decode correctness, every failure mode) — here it's
+// just mocked at the boundary to prove the screen renders/omits <Polyline>
+// correctly based on what it resolves to, without a real network call.
+const mockGetRoute = jest.fn();
+jest.mock('../../../src/utils/directions', () => ({
+  getRoute: (...args: unknown[]) => mockGetRoute(...args),
+}));
+
 function jobPayload(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     _id: 'j1',
@@ -41,6 +50,7 @@ describe('DriverJobDetailScreen', () => {
       refreshSession: jest.fn(),
       onAuthExpired: jest.fn(),
     });
+    mockGetRoute.mockReset().mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -62,6 +72,28 @@ describe('DriverJobDetailScreen', () => {
       </QueryClientProvider>,
     );
   }
+
+  it('renders the route polyline once getRoute resolves real geometry', async () => {
+    mock.onGet('/jobs/j1').reply(200, { success: true, data: jobPayload({ status: 'ACCEPTED' }) });
+    mockGetRoute.mockResolvedValue([
+      { latitude: 25.2, longitude: 55.27 },
+      { latitude: 25.08, longitude: 55.14 },
+    ]);
+
+    const { findByTestId } = await renderScreen();
+
+    expect(await findByTestId('map-polyline')).toBeTruthy();
+  });
+
+  it('renders markers-only (no polyline) when getRoute resolves null — the graceful fallback', async () => {
+    mock.onGet('/jobs/j1').reply(200, { success: true, data: jobPayload({ status: 'ACCEPTED' }) });
+    mockGetRoute.mockResolvedValue(null);
+
+    const { queryByTestId, findByTestId } = await renderScreen();
+
+    await findByTestId('map-view');
+    expect(queryByTestId('map-polyline')).toBeNull();
+  });
 
   it('shows the correct next-action button for ACCEPTED and calls PATCH with EN_ROUTE', async () => {
     mock.onGet('/jobs/j1').reply(200, { success: true, data: jobPayload({ status: 'ACCEPTED' }) });

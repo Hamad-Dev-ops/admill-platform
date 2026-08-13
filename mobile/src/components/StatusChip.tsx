@@ -21,7 +21,11 @@ export function StatusChip({ label, tone }: StatusChipProps) {
   const color = TONE_COLOR[tone];
 
   return (
-    <Chip compact style={{ backgroundColor: `${color}22` }} textStyle={{ color }}>
+    // Display-only (no onPress) — Paper's Chip defaults accessibilityRole to
+    // "button" regardless, which would wrongly tell a screen reader user
+    // this status badge is tappable. Overridden to "text" since that's what
+    // it actually is.
+    <Chip compact accessibilityRole="text" style={{ backgroundColor: `${color}22` }} textStyle={{ color }}>
       {label}
     </Chip>
   );

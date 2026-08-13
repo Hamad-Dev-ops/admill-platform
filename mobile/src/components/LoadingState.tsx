@@ -9,7 +9,13 @@ export interface LoadingStateProps {
 
 export function LoadingState({ label }: LoadingStateProps) {
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label ?? 'Loading'}
+      accessibilityLiveRegion="polite"
+    >
       <ActivityIndicator size="large" color={colors.primary} />
       {!!label && <Text style={styles.label}>{label}</Text>}
     </View>

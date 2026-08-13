@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Card, ErrorState, Header, LoadingState, StatusChip, TextInput } from '../../../components';
+import { Button, Card, ErrorState, Header, InlineError, LoadingState, StatusChip, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { cancelJob, getJobById, progressJobStatus } from '../../../api/jobs.api';
 import { colors, spacing } from '../../../design-system/tokens';
 import { useSocketEvent } from '../../../hooks/useSocketEvent';
 import type { DriverStackParamList } from '../../../navigation/driver/types';
 import { SocketService } from '../../../socket/SocketService';
+import { getRoute } from '../../../utils/directions';
 import { JOB_STATUS_LABEL, JOB_STATUS_TONE } from '../../../utils/statusPresentation';
 import { SERVICE_TYPE_LABEL } from '../../owner/fleet/vehicleLabels';
 import { NEXT_DRIVER_STATUS, PROGRESS_ACTION_LABEL, isTerminalJobStatus } from './jobProgression';
@@ -36,6 +37,17 @@ export function DriverJobDetailScreen({ navigation, route }: Props) {
   const refetchJob = () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId] });
   useSocketEvent('job:status-changed', refetchJob);
   useSocketEvent('job:accepted', refetchJob);
+
+  // Pickup/destination are set at job creation and never change. getRoute()
+  // never throws — a null result (Directions/Routes API not configured,
+  // quota, timeout, no route found, ...) just means no polyline is drawn;
+  // the map already works fine without one (gap #6).
+  const routeQuery = useQuery({
+    queryKey: ['directions', jobId],
+    queryFn: () => getRoute(jobQuery.data!.pickupLocation.geo, jobQuery.data!.destinationLocation.geo),
+    enabled: !!jobQuery.data,
+    retry: false,
+  });
 
   const progressMutation = useMutation({
     mutationFn: (status: NonNullable<ReturnType<typeof getNextStatus>>) =>
@@ -107,21 +119,26 @@ export function DriverJobDetailScreen({ navigation, route }: Props) {
           </Card.Content>
         </Card>
 
-        {/* Pickup/destination markers only — the backend has no route
-            geometry (frontend-docs/GAP-REPORT.md #6), so no polyline is
-            drawn here; that would require calling a maps/directions
-            provider directly, out of scope for this phase. */}
+        {/* Pickup/destination markers always shown; the route line (gap #6)
+            only renders once routeQuery actually resolves real geometry —
+            markers-only remains the fallback for a missing/misconfigured
+            key, quota, timeout, or no-route-found (src/utils/directions.ts
+            never throws, just resolves null). */}
         <View style={styles.mapWrap}>
           <MapView
             style={styles.map}
             initialRegion={regionFor(job.pickupLocation.geo, job.destinationLocation.geo)}
           >
+            {!!routeQuery.data && (
+              <Polyline coordinates={routeQuery.data} strokeColor={colors.ink} strokeWidth={4} />
+            )}
             <Marker
               coordinate={{
                 latitude: job.pickupLocation.geo.coordinates[1],
                 longitude: job.pickupLocation.geo.coordinates[0],
               }}
               title="Pickup"
+              accessibilityLabel="Pickup location"
               pinColor={colors.success}
             />
             <Marker
@@ -130,6 +147,7 @@ export function DriverJobDetailScreen({ navigation, route }: Props) {
                 longitude: job.destinationLocation.geo.coordinates[0],
               }}
               title="Destination"
+              accessibilityLabel="Destination location"
               pinColor={colors.danger}
             />
           </MapView>
@@ -154,11 +172,7 @@ export function DriverJobDetailScreen({ navigation, route }: Props) {
           </Card>
         )}
 
-        {!!actionError && (
-          <Text style={styles.error} variant="bodySmall">
-            {actionError}
-          </Text>
-        )}
+        {!!actionError && <InlineError>{actionError}</InlineError>}
 
         {nextStatus && (
           <Button

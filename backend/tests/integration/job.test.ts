@@ -634,4 +634,75 @@ describe("Job Lifecycle & Dispatch (Milestone 6)", () => {
       customerSocket.disconnect();
     });
   });
+
+  // Gap #13 (GAP-REPORT.md) — the Customer active-job/tracking view's "who's my
+  // driver" display.
+  describe("assignedDriver on GET /jobs/:id (Gap #13)", () => {
+    it("is absent before a driver is assigned, then exposes exactly name/photo/rating (never email/phone) to the job's own customer, and never to a different customer", async () => {
+      const { owner, company, customer } = await createCompanyOwnerAndCustomer("gap13");
+      const driver = await registerAndApproveDriver(owner.accessToken, company.companyCode, "gap13driver");
+      await makeDriverAvailableAt(driver.accessToken, NEAR_DRIVER_LOCATION);
+
+      // Give the driver a photo + a non-zero rating so the test can assert real
+      // values, not just "the key happens to be absent/zero by default."
+      await request(app)
+        .patch(`/api/v1/drivers/${driver.driverId}`)
+        .set("Authorization", `Bearer ${owner.accessToken}`)
+        .send({ profileImage: "https://example.com/driver-photo.jpg" });
+      await DriverModel.findByIdAndUpdate(driver.driverId, { rating: 4.8 });
+
+      const otherCustomer = await registerUser(UserRole.CUSTOMER, "gap13othercustomer");
+
+      const createRes = await request(app)
+        .post("/api/v1/jobs")
+        .set("Authorization", `Bearer ${customer.accessToken}`)
+        .send(jobPayload());
+      const jobId = createRes.body.data._id as string;
+
+      // Before acceptance: no driver assigned yet, so nothing to show.
+      const beforeAccept = await request(app)
+        .get(`/api/v1/jobs/${jobId}`)
+        .set("Authorization", `Bearer ${customer.accessToken}`);
+      expect(beforeAccept.status).toBe(200);
+      expect(beforeAccept.body.data.assignedDriver).toBeNull();
+
+      await request(app).post(`/api/v1/jobs/${jobId}/accept`).set("Authorization", `Bearer ${driver.accessToken}`);
+
+      // The job's own customer sees exactly the public identity fields.
+      const ownCustomerGet = await request(app)
+        .get(`/api/v1/jobs/${jobId}`)
+        .set("Authorization", `Bearer ${customer.accessToken}`);
+      expect(ownCustomerGet.status).toBe(200);
+      expect(ownCustomerGet.body.data.assignedDriver).toEqual({
+        firstName: "Test",
+        lastName: "gap13driver",
+        profileImage: "https://example.com/driver-photo.jpg",
+        rating: 4.8,
+      });
+      expect(ownCustomerGet.body.data.assignedDriver.email).toBeUndefined();
+      expect(ownCustomerGet.body.data.assignedDriver.phone).toBeUndefined();
+
+      // A different customer cannot reach this job at all (403, before the
+      // assignedDriver field even matters) — the actual boundary Gap #13 cares
+      // about: identity for the assigned driver leaks to no one but this job's
+      // own customer.
+      const strangerGet = await request(app)
+        .get(`/api/v1/jobs/${jobId}`)
+        .set("Authorization", `Bearer ${otherCustomer.accessToken}`);
+      expect(strangerGet.status).toBe(403);
+      expect(strangerGet.body.data).toBeUndefined();
+
+      // The assigned driver and the owning OWNER can also see it (both already had
+      // full job access before this gap; assignedDriver adds nothing new for them).
+      const driverGet = await request(app)
+        .get(`/api/v1/jobs/${jobId}`)
+        .set("Authorization", `Bearer ${driver.accessToken}`);
+      expect(driverGet.body.data.assignedDriver.firstName).toBe("Test");
+
+      const ownerGet = await request(app)
+        .get(`/api/v1/jobs/${jobId}`)
+        .set("Authorization", `Bearer ${owner.accessToken}`);
+      expect(ownerGet.body.data.assignedDriver.firstName).toBe("Test");
+    }, 45000);
+  });
 });

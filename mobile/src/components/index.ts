@@ -7,6 +7,7 @@ export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
 export { Header } from './Header';
 export { IconButton } from './IconButton';
+export { InlineError } from './InlineError';
 export { LoadingState } from './LoadingState';
 export { MetricCard } from './MetricCard';
 export { Modal } from './Modal';

@@ -15,7 +15,17 @@ export interface CardProps {
 
 export function Card({ style, children, onPress, testID }: CardProps) {
   return (
-    <PaperCard mode="elevated" style={[styles.card, style]} onPress={onPress} testID={testID}>
+    // Unlike Paper's Chip, Paper's Card does NOT set accessibilityRole
+    // automatically when onPress is present — every pressable Card in this
+    // app (job/driver/vehicle list rows, dashboard shortcuts, ...) was
+    // silently missing this before (accessibility audit, Phase 5).
+    <PaperCard
+      mode="elevated"
+      style={[styles.card, style]}
+      onPress={onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      testID={testID}
+    >
       {children}
     </PaperCard>
   );

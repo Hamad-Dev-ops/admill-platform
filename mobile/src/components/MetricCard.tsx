@@ -15,8 +15,15 @@ export interface MetricCardProps {
 export function MetricCard({ label, value, icon, accentColor = colors.primary, onPress }: MetricCardProps) {
   return (
     <Card style={styles.card} onPress={onPress}>
-      <Card.Content style={styles.content}>
-        <View style={[styles.iconWrap, { backgroundColor: `${accentColor}22` }]}>
+      {/* Grouped into one accessible element with a combined label — without
+          this, a screen reader announces "12" then "Active Jobs" as two
+          disconnected fragments instead of one coherent metric. */}
+      <Card.Content style={styles.content} accessible accessibilityLabel={`${label}: ${value}`}>
+        <View
+          style={[styles.iconWrap, { backgroundColor: `${accentColor}22` }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        >
           <Icon source={icon} size={20} color={accentColor} />
         </View>
         <Text variant="headlineSmall" style={styles.value}>

@@ -12,6 +12,7 @@ import { colors, spacing } from '../../../design-system/tokens';
 import { useSocketEvent } from '../../../hooks/useSocketEvent';
 import type { OwnerStackParamList } from '../../../navigation/owner/types';
 import type { DriverLocationChangedPayload } from '../../../socket/SocketService';
+import type { DriverStatus } from '../../../types/enums';
 import { DRIVER_STATUS_LABEL } from '../../../utils/statusPresentation';
 
 // Fallback region (Dubai) used only until a real driver location is known —
@@ -36,6 +37,46 @@ interface LivePosition {
   latitude: number;
   longitude: number;
 }
+
+interface DriverMarkerProps {
+  driverId: string;
+  employeeId: string;
+  status: DriverStatus;
+  position: LivePosition;
+  onCalloutPress: (driverId: string) => void;
+}
+
+// Performance Audit finding F2: previously, a location update for ANY one
+// driver replaced the whole trackedDrivers array (see the useMemo below),
+// which — combined with an inline, unmemoized Marker per driver — meant
+// every driver's marker re-rendered on every single driver's update, not
+// just the one that moved. Extracting this as its own React.memo'd
+// component fixes it: trackedDrivers' unaffected entries keep the exact
+// same `position`/`driver` object references across a re-render (the
+// spread in handleLocationChanged below only replaces the one driver's
+// entry), so React.memo's default shallow prop comparison correctly skips
+// re-rendering every marker except the one whose driver actually moved.
+// onCalloutPress is passed down as a stable (useCallback'd) function taking
+// driverId as an argument, rather than a fresh per-driver closure, so it
+// never itself defeats the memo comparison.
+const DriverMarker = React.memo(function DriverMarkerImpl({
+  driverId,
+  employeeId,
+  status,
+  position,
+  onCalloutPress,
+}: DriverMarkerProps) {
+  return (
+    <Marker
+      coordinate={position}
+      title={employeeId}
+      description={DRIVER_STATUS_LABEL[status]}
+      accessibilityLabel={`Driver ${employeeId}, ${DRIVER_STATUS_LABEL[status]}`}
+      pinColor={STATUS_MARKER_COLOR[status] ?? colors.inkMuted}
+      onCalloutPress={() => onCalloutPress(driverId)}
+    />
+  );
+});
 
 export function FleetTrackingScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<OwnerStackParamList>>();
@@ -63,6 +104,15 @@ export function FleetTrackingScreen() {
   }, []);
   useSocketEvent('driver:location:changed', handleLocationChanged);
 
+  // Stable across renders so it never itself defeats DriverMarker's memo
+  // comparison (an inline `() => navigation.navigate(...)` per-driver
+  // closure, as this used to be, would recreate a "changed" prop on every
+  // render regardless of whether that driver's own data changed).
+  const handleCalloutPress = useCallback(
+    (driverId: string) => navigation.navigate('DriverDetail', { driverId }),
+    [navigation],
+  );
+
   // A new job for the company may shortly change a driver's status
   // (AVAILABLE -> ON_JOB) — refresh the roster rather than trying to derive
   // that client-side.
@@ -70,17 +120,36 @@ export function FleetTrackingScreen() {
     queryClient.invalidateQueries({ queryKey: ['drivers', 'tracking'] });
   });
 
+  // Kept as its own memo, separate from trackedDrivers below, specifically
+  // so it only recomputes when the REST roster itself changes — NOT on
+  // every livePositions update. Without this split, a REST-sourced position
+  // object (any driver not yet touched by a live socket update) would get a
+  // brand-new object literal on every single trackedDrivers recompute, even
+  // though its actual value never changed — silently defeating
+  // DriverMarker's React.memo for every driver except the one that just
+  // moved (Performance Audit finding F2 — caught by a referential-stability
+  // test, not just inferred from the extraction alone).
+  const restPositions = useMemo(() => {
+    const drivers = driversQuery.data?.data ?? [];
+    const positions: Record<string, LivePosition> = {};
+    for (const driver of drivers) {
+      const coords = driver.currentLocation?.coordinates;
+      if (coords) {
+        positions[driver._id] = { latitude: coords[1], longitude: coords[0] };
+      }
+    }
+    return positions;
+  }, [driversQuery.data]);
+
   const trackedDrivers = useMemo(() => {
     const drivers = driversQuery.data?.data ?? [];
     return drivers
       .map((driver) => {
-        const live = livePositions[driver._id];
-        const restCoords = driver.currentLocation?.coordinates;
-        const position = live ?? (restCoords ? { latitude: restCoords[1], longitude: restCoords[0] } : null);
+        const position = livePositions[driver._id] ?? restPositions[driver._id] ?? null;
         return position ? { driver, position } : null;
       })
       .filter((entry): entry is { driver: (typeof drivers)[number]; position: LivePosition } => !!entry);
-  }, [driversQuery.data, livePositions]);
+  }, [driversQuery.data, livePositions, restPositions]);
 
   if (driversQuery.isLoading) {
     return (
@@ -122,13 +191,13 @@ export function FleetTrackingScreen() {
         <View style={styles.mapWrap}>
           <MapView style={styles.map} initialRegion={initialRegion}>
             {trackedDrivers.map(({ driver, position }) => (
-              <Marker
+              <DriverMarker
                 key={driver._id}
-                coordinate={position}
-                title={driver.employeeId}
-                description={DRIVER_STATUS_LABEL[driver.status]}
-                pinColor={STATUS_MARKER_COLOR[driver.status] ?? colors.inkMuted}
-                onCalloutPress={() => navigation.navigate('DriverDetail', { driverId: driver._id })}
+                driverId={driver._id}
+                employeeId={driver.employeeId}
+                status={driver.status}
+                position={position}
+                onCalloutPress={handleCalloutPress}
               />
             ))}
           </MapView>

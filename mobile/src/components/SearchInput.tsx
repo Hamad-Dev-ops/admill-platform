@@ -12,9 +12,11 @@ export function SearchInput({ value, onClear, ...rest }: SearchInputProps) {
     <PaperTextInput
       mode="outlined"
       value={value}
-      left={<PaperTextInput.Icon icon="magnify" />}
+      left={<PaperTextInput.Icon icon="magnify" accessibilityElementsHidden importantForAccessibility="no" />}
       right={
-        value ? <PaperTextInput.Icon icon="close" onPress={onClear} /> : undefined
+        value ? (
+          <PaperTextInput.Icon icon="close" onPress={onClear} accessibilityLabel="Clear search" />
+        ) : undefined
       }
       {...rest}
     />

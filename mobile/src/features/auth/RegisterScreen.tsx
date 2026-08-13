@@ -4,7 +4,7 @@ import { SegmentedButtons, Text } from 'react-native-paper';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, TextInput } from '../../components';
+import { Button, InlineError, TextInput } from '../../components';
 import { useAuth } from '../../auth/AuthContext';
 import { getApiErrorMessage } from '../../api/client';
 import { colors, spacing } from '../../design-system/tokens';
@@ -137,11 +137,7 @@ export function RegisterScreen({ navigation }: Props) {
             )}
           />
 
-          {!!submitError && (
-            <Text style={styles.error} variant="bodySmall">
-              {submitError}
-            </Text>
-          )}
+          {!!submitError && <InlineError>{submitError}</InlineError>}
 
           <Button
             variant="primary"

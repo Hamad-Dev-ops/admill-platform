@@ -17,6 +17,15 @@ jest.mock('../../../src/socket/SocketService', () => ({
   SocketService: { subscribeToJob: jest.fn() },
 }));
 
+// getRoute is unit-tested exhaustively in __tests__/utils/directions.test.ts
+// (real fetch mocking, decode correctness, every failure mode) — here it's
+// just mocked at the boundary to prove the screen renders/omits <Polyline>
+// correctly based on what it resolves to, without a real network call.
+const mockGetRoute = jest.fn();
+jest.mock('../../../src/utils/directions', () => ({
+  getRoute: (...args: unknown[]) => mockGetRoute(...args),
+}));
+
 const mockGoBack = jest.fn();
 
 function jobPayload(overrides: Partial<Record<string, unknown>> = {}) {
@@ -55,6 +64,7 @@ describe('CustomerJobDetailScreen', () => {
     });
     Object.keys(socketHandlers).forEach((key) => delete socketHandlers[key]);
     mockGoBack.mockReset();
+    mockGetRoute.mockReset().mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -80,6 +90,55 @@ describe('CustomerJobDetailScreen', () => {
     mock.onGet('/jobs/j1').reply(500);
     const { getByText } = await renderScreen();
     await waitFor(() => expect(getByText('Retry')).toBeTruthy());
+  });
+
+  it('renders the route polyline once getRoute resolves real geometry', async () => {
+    mock.onGet('/jobs/j1').reply(200, { success: true, data: jobPayload({ status: 'ACCEPTED' }) });
+    mockGetRoute.mockResolvedValue([
+      { latitude: 25.2, longitude: 55.27 },
+      { latitude: 25.08, longitude: 55.14 },
+    ]);
+
+    const { findByTestId } = await renderScreen();
+
+    expect(await findByTestId('map-polyline')).toBeTruthy();
+  });
+
+  it('renders markers-only (no polyline) when getRoute resolves null — the graceful fallback', async () => {
+    mock.onGet('/jobs/j1').reply(200, { success: true, data: jobPayload({ status: 'ACCEPTED' }) });
+    mockGetRoute.mockResolvedValue(null);
+
+    const { queryByTestId, findByTestId } = await renderScreen();
+
+    await findByTestId('map-view');
+    expect(queryByTestId('map-polyline')).toBeNull();
+  });
+
+  it('shows the assigned driver\'s name, photo, and rating when present (gap #13)', async () => {
+    mock.onGet('/jobs/j1').reply(200, {
+      success: true,
+      data: jobPayload({
+        status: 'ACCEPTED',
+        assignedDriver: { firstName: 'Ahmed', lastName: 'Hassan', profileImage: 'https://example.com/a.jpg', rating: 4.8 },
+      }),
+    });
+
+    const { getByText } = await renderScreen();
+
+    await waitFor(() => expect(getByText('Ahmed Hassan')).toBeTruthy());
+    expect(getByText('4.8★')).toBeTruthy();
+  });
+
+  it('shows nothing driver-identity-related when assignedDriver is null (no driver assigned yet)', async () => {
+    mock.onGet('/jobs/j1').reply(200, {
+      success: true,
+      data: jobPayload({ status: 'PENDING', driverId: undefined, offeredDriverIds: [], assignedDriver: null }),
+    });
+
+    const { queryByText } = await renderScreen();
+
+    await waitFor(() => expect(queryByText('Cancel Request')).toBeTruthy());
+    expect(queryByText(/★/)).toBeNull();
   });
 
   it('does not show a driver marker/location while ACCEPTED (gap #13 — visible only EN_ROUTE/STARTED)', async () => {

@@ -4,7 +4,7 @@ import { Text } from 'react-native-paper';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, TextInput } from '../../../components';
+import { Button, Card, InlineError, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { updateMyCompany } from '../../../api/companies.api';
 import { colors, spacing } from '../../../design-system/tokens';
@@ -62,11 +62,7 @@ export function CompanyProfileCard({ company }: { company: CompanySummary }) {
         <Field control={control} name="city" label="City" />
         <Field control={control} name="country" label="Country" />
 
-        {!!submitError && (
-          <Text style={styles.error} variant="bodySmall">
-            {submitError}
-          </Text>
-        )}
+        {!!submitError && <InlineError>{submitError}</InlineError>}
 
         <Button
           variant="primary"

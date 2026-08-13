@@ -5,7 +5,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, ErrorState, Header, LoadingState, StatusChip } from '../../../components';
+import { Button, Card, ErrorState, Header, InlineError, LoadingState, StatusChip } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { getMyDriverProfile } from '../../../api/drivers.api';
 import { listDriverDocuments, uploadDriverDocument } from '../../../api/documents.api';
@@ -48,7 +48,13 @@ export function DriverDocumentsScreen() {
 
   async function pickAndUpload(documentType: DocumentType) {
     setUploadError(null);
-    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8 });
+    // Performance Audit finding F6 — previously uploaded at full camera/
+    // library resolution (only JPEG re-encode quality was capped). A
+    // document photo just needs to be legible, not print-resolution;
+    // capping the long edge cuts upload size/time substantially on a weak
+    // connection with no visible legibility loss. Quality/file-type/error
+    // handling are all unchanged.
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600 });
     if (result.didCancel || result.errorCode) {
       if (result.errorCode) setUploadError(result.errorMessage ?? 'Unable to open the photo library');
       return;
@@ -86,11 +92,7 @@ export function DriverDocumentsScreen() {
 
       {!isLoading && !isError && (
         <ScrollView contentContainerStyle={styles.content}>
-          {!!uploadError && (
-            <Text style={styles.error} variant="bodySmall">
-              {uploadError}
-            </Text>
-          )}
+          {!!uploadError && <InlineError>{uploadError}</InlineError>}
 
           {DRIVER_DOCUMENT_TYPES.map((type) => {
             const existing = documentsQuery.data

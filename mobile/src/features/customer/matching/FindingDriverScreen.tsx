@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, EmptyState, ErrorState, Header, LoadingState } from '../../../components';
+import { Button, EmptyState, ErrorState, Header, InlineError, LoadingState } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { cancelJob, getJobById } from '../../../api/jobs.api';
 import { colors, spacing } from '../../../design-system/tokens';
@@ -130,11 +130,7 @@ export function FindingDriverScreen({ route }: Props) {
           We've notified nearby drivers. This usually takes a few minutes.
         </Text>
 
-        {!!cancelError && (
-          <Text variant="bodySmall" style={styles.error}>
-            {cancelError}
-          </Text>
-        )}
+        {!!cancelError && <InlineError>{cancelError}</InlineError>}
 
         <Button
           variant="secondary"

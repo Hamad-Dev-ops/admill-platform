@@ -5,7 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import axios from 'axios';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, TextInput } from '../../components';
+import { Button, InlineError, TextInput } from '../../components';
 import { useAuth } from '../../auth/AuthContext';
 import { getApiErrorMessage } from '../../api/client';
 import { colors, spacing } from '../../design-system/tokens';
@@ -102,11 +102,7 @@ export function LoginScreen({ navigation }: Props) {
             )}
           />
 
-          {!!submitError && (
-            <Text style={styles.error} variant="bodySmall">
-              {submitError}
-            </Text>
-          )}
+          {!!submitError && <InlineError>{submitError}</InlineError>}
 
           <Button
             variant="primary"
@@ -131,5 +127,4 @@ const styles = StyleSheet.create({
   title: { color: colors.ink },
   subtitle: { color: colors.inkMuted, marginBottom: spacing.lg },
   form: { gap: spacing.md },
-  error: { color: colors.danger },
 });

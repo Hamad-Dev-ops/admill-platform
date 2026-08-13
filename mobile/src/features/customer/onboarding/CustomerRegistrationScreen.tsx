@@ -5,7 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, TextInput } from '../../../components';
+import { Button, InlineError, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { registerCustomerProfile } from '../../../api/customers.api';
 import { useAuth } from '../../../auth/AuthContext';
@@ -91,11 +91,7 @@ export function CustomerRegistrationScreen() {
               )}
             />
 
-            {!!submitError && (
-              <Text style={styles.error} variant="bodySmall">
-                {submitError}
-              </Text>
-            )}
+            {!!submitError && <InlineError>{submitError}</InlineError>}
 
             <Button
               variant="primary"

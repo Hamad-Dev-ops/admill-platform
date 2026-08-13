@@ -16,7 +16,10 @@ import { colors, spacing } from '../design-system/tokens';
 // use that instead.
 export function BottomTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    <View
+      style={[styles.container, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}
+      accessibilityRole="tablist"
+    >
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
         const isFocused = state.index === index;
@@ -39,7 +42,8 @@ export function BottomTabBar({ state, descriptors, navigation, insets }: BottomT
         return (
           <Pressable
             key={route.key}
-            accessibilityRole="button"
+            accessibilityRole="tab"
+            accessibilityLabel={label}
             accessibilityState={isFocused ? { selected: true } : {}}
             onPress={onPress}
             style={styles.tab}

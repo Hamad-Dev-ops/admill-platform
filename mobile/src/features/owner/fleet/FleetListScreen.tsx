@@ -25,7 +25,11 @@ export function FleetListScreen() {
         title="Fleet"
         right={
           tab === 'vehicles' ? (
-            <IconButton icon="plus" onPress={() => navigation.navigate('VehicleForm', {})} />
+            <IconButton
+              icon="plus"
+              accessibilityLabel="Add vehicle"
+              onPress={() => navigation.navigate('VehicleForm', {})}
+            />
           ) : undefined
         }
       />

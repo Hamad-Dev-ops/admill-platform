@@ -17,13 +17,14 @@ function initials(name: string): string {
 
 export function Avatar({ name, imageUrl, size = 40 }: AvatarProps) {
   if (imageUrl) {
-    return <PaperAvatar.Image size={size} source={{ uri: imageUrl }} />;
+    return <PaperAvatar.Image size={size} source={{ uri: imageUrl }} accessibilityLabel={name} />;
   }
 
   return (
     <PaperAvatar.Text
       size={size}
       label={initials(name) || '?'}
+      accessibilityLabel={name}
       style={{ backgroundColor: colors.primaryMuted }}
       labelStyle={{ color: colors.ink }}
     />

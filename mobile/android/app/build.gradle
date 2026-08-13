@@ -1,7 +1,19 @@
+import com.android.build.OutputFile
+
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
+
+// Performance Audit finding F5 — react-native-vector-icons bundles all 19
+// font families (~3.9MB) by default. Confirmed via a repo-wide grep that
+// this app only ever uses MaterialCommunityIcons (through react-native-
+// paper's Icon/IconButton, which resolves to that one family internally) —
+// no other font is imported/referenced anywhere in src/. Restricting to
+// just that one file removes ~2.8MB of genuinely unused fonts.
+project.ext.vectoricons = [
+    iconFontNames: ["MaterialCommunityIcons.ttf"]
+]
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 
 // Push notifications (Milestone 8 mobile gap) — google-services.json is
@@ -68,8 +80,30 @@ react {
 
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ *
+ * Performance Audit finding F4 — enabled. Custom keep rules for the
+ * reflection-heavy parts of this dependency stack (React Native bridge,
+ * Firebase Messaging, react-native-maps) live in proguard-rules.pro.
+ * Verified with a real physical-device pass covering login/session restore,
+ * GPS, maps, sockets, push, and the full job lifecycle — not assumed safe
+ * from a successful build alone.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
+
+/**
+ * Performance Audit finding F3 — without this, one "universal" APK bundles
+ * native .so libraries for all 4 architectures (armeabi-v7a, arm64-v8a, x86,
+ * x86_64), which is the single biggest driver of release APK size. Splitting
+ * per-ABI is standard and safe for the CURRENT direct-APK-sideloading
+ * distribution model (not Play Store, which would otherwise handle this
+ * automatically via App Bundles) — universalApk stays true below
+ * specifically so a full-architecture fallback APK is still produced
+ * alongside the small per-ABI ones, so a tester who installs the wrong
+ * per-ABI file (or whose device architecture is unknown) always has a
+ * working option, never just an install failure. See
+ * android/APK-DISTRIBUTION.md for which file to hand to which device.
+ */
+def enableSeparateBuildPerCPUArchitecture = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -114,7 +148,35 @@ android {
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+    splits {
+        abi {
+            reset()
+            enable enableSeparateBuildPerCPUArchitecture
+            // Also builds one universal (all-architecture) APK alongside the
+            // 4 small per-ABI ones — see the comment on
+            // enableSeparateBuildPerCPUArchitecture above for why, for this
+            // project's direct-sideloading distribution model.
+            universalApk true
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+}
+
+// Gives each per-ABI APK a distinct versionCode (offset by architecture) so
+// they're unambiguous as separate artifacts — standard practice alongside
+// ABI splits (matches React Native's own documented pattern for this
+// feature), even though this project doesn't currently upload to a store
+// that would enforce it.
+android.applicationVariants.all { variant ->
+    variant.outputs.each { output ->
+        def abiVersionCodes = ["armeabi-v7a": 1, "x86": 2, "arm64-v8a": 3, "x86_64": 4]
+        def abi = output.getFilter(OutputFile.ABI)
+        if (abi != null) {
+            output.versionCodeOverride = abiVersionCodes.get(abi) * 1048576 + android.defaultConfig.versionCode
         }
     }
 }

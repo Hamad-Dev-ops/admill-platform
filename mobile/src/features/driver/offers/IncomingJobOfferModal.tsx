@@ -88,7 +88,12 @@ export function IncomingJobOfferModal({ offer, onDismiss, onAccepted }: Incoming
 
       {!!statusMessage && (
         <View style={styles.statusBanner}>
-          <Text variant="bodyMedium" style={styles.statusText}>
+          <Text
+            variant="bodyMedium"
+            style={styles.statusText}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
             {statusMessage}
           </Text>
           <Button variant="text" onPress={onDismiss}>

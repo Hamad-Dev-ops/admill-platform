@@ -19,13 +19,21 @@ const STARS = [1, 2, 3, 4, 5];
 // it depends on a role.
 export function StarRatingInput({ value, onChange, disabled, size = 36 }: StarRatingInputProps) {
   return (
-    <View style={styles.row} accessibilityRole="adjustable">
+    // Not accessibilityRole="adjustable" — that role implies swipe
+    // up/down/left/right changes the value (via accessibilityActions),
+    // which isn't implemented here; each star is its own direct-tap target
+    // instead, so each gets its own accessibilityRole="button" below.
+    // Declaring "adjustable" without the matching gesture support would
+    // mislead a screen reader user into swiping and getting nothing.
+    <View style={styles.row}>
       {STARS.map((star) => (
         <Pressable
           key={star}
           onPress={() => !disabled && onChange(star)}
           disabled={disabled}
+          accessibilityRole="button"
           accessibilityLabel={`${star} star${star > 1 ? 's' : ''}`}
+          accessibilityState={{ disabled, selected: star <= value }}
           hitSlop={8}
         >
           <Icon

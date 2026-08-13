@@ -44,6 +44,7 @@ export function DashboardScreen() {
         right={
           <IconButton
             icon={unreadCount > 0 ? 'bell-badge' : 'bell-outline'}
+            accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
             onPress={() => navigation.navigate('Notifications')}
           />
         }

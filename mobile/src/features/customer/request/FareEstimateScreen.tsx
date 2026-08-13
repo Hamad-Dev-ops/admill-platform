@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, ErrorState, Header, LoadingState, TextInput } from '../../../components';
+import { Button, Card, ErrorState, Header, InlineError, LoadingState, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { createJob } from '../../../api/jobs.api';
 import { estimateFare } from '../../../api/pricing.api';
@@ -191,9 +191,7 @@ export function FareEstimateScreen({ route }: Props) {
               )}
               {readyForEstimate && estimateQuery.isLoading && <LoadingState />}
               {readyForEstimate && estimateQuery.isError && (
-                <Text variant="bodySmall" style={styles.error}>
-                  {getApiErrorMessage(estimateQuery.error, 'Unable to get a fare estimate')}
-                </Text>
+                <InlineError>{getApiErrorMessage(estimateQuery.error, 'Unable to get a fare estimate')}</InlineError>
               )}
               {readyForEstimate && estimateQuery.data && (
                 <>
@@ -216,11 +214,7 @@ export function FareEstimateScreen({ route }: Props) {
             </Card.Content>
           </Card>
 
-          {!!bookingError && (
-            <Text variant="bodySmall" style={styles.error}>
-              {bookingError}
-            </Text>
-          )}
+          {!!bookingError && <InlineError>{bookingError}</InlineError>}
 
           <Button
             variant="primary"

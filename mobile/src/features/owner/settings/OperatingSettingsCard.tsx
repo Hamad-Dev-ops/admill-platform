@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Switch, Text } from 'react-native-paper';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, TextInput } from '../../../components';
+import { Button, Card, InlineError, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { updateMyCompanySettings } from '../../../api/companies.api';
 import { colors, spacing } from '../../../design-system/tokens';
@@ -57,11 +57,7 @@ export function OperatingSettingsCard({ settings }: { settings: CompanySettings 
         <PreferenceRow label="SMS" value={sms} onChange={setSms} />
         <PreferenceRow label="Push" value={push} onChange={setPush} />
 
-        {!!submitError && (
-          <Text style={styles.error} variant="bodySmall">
-            {submitError}
-          </Text>
-        )}
+        {!!submitError && <InlineError>{submitError}</InlineError>}
 
         <Button
           variant="primary"

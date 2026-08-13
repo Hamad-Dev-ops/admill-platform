@@ -13,9 +13,14 @@ function Marker(props) {
   return React.createElement(View, { testID: 'map-marker', ...props });
 }
 
+function Polyline(props) {
+  return React.createElement(View, { testID: 'map-polyline', ...props });
+}
+
 module.exports = {
   __esModule: true,
   default: MapView,
   Marker,
+  Polyline,
   PROVIDER_GOOGLE: 'google',
 };

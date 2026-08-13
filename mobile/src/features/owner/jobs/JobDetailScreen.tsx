@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Card, ErrorState, Header, LoadingState, StatusChip, TextInput } from '../../../components';
+import { Button, Card, ErrorState, Header, InlineError, LoadingState, StatusChip, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { cancelJob, getJobById } from '../../../api/jobs.api';
 import { colors, spacing } from '../../../design-system/tokens';
@@ -131,11 +131,7 @@ export function JobDetailScreen({ navigation, route }: Props) {
         {canCancel && (
           <Card>
             <Card.Content style={styles.cardContent}>
-              {!!cancelError && (
-                <Text style={styles.error} variant="bodySmall">
-                  {cancelError}
-                </Text>
-              )}
+              {!!cancelError && <InlineError>{cancelError}</InlineError>}
               {!showCancelForm ? (
                 <Button variant="danger" onPress={() => setShowCancelForm(true)}>
                   Cancel Job

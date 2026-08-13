@@ -20,8 +20,15 @@ export function EmptyState({
   onAction,
 }: EmptyStateProps) {
   return (
-    <View style={styles.container}>
-      <Icon source={icon} size={48} color={colors.inkMuted} />
+    <View style={styles.container} accessibilityLiveRegion="polite">
+      {/* Decorative — the title/description text below already conveys the
+          meaning; an icon name like "alert-circle-outline" adds nothing for
+          a screen reader and would just be redundant noise. Paper's Icon
+          doesn't accept accessibility props directly, hence the wrapping
+          View. */}
+      <View accessibilityElementsHidden importantForAccessibility="no">
+        <Icon source={icon} size={48} color={colors.inkMuted} />
+      </View>
       <Text variant="titleMedium" style={styles.title}>
         {title}
       </Text>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, ErrorState, LoadingState, TextInput } from '../../../components';
+import { Button, Card, ErrorState, InlineError, LoadingState, TextInput } from '../../../components';
 import { getApiErrorMessage } from '../../../api/client';
 import { createPricingConfigVersion, getPricingConfig } from '../../../api/pricing.api';
 import { colors, spacing } from '../../../design-system/tokens';
@@ -128,11 +128,7 @@ export function PricingCard() {
           keyboardType="numeric"
         />
 
-        {!!submitError && (
-          <Text style={styles.error} variant="bodySmall">
-            {submitError}
-          </Text>
-        )}
+        {!!submitError && <InlineError>{submitError}</InlineError>}
 
         <Button variant="danger" loading={mutation.isPending} onPress={confirmAndSave}>
           Save Pricing (Platform-Wide)
