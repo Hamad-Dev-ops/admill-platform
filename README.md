@@ -98,7 +98,7 @@ npm start                          # Metro bundler
 npx react-native run-android       # installs + runs a debug build on a connected device/emulator
 ```
 
-**Testing on a physical phone (not an emulator):** a **debug** build needs Metro reachable from the phone — either plug in via USB and run `adb reverse tcp:8081 tcp:8081`, or put your machine's LAN IP in the app's in-app dev menu (shake the device) if on the same WiFi. If the backend also needs to be reachable from a phone off your LAN (e.g. testing over mobile data), tunnel it — `ngrok http 5000` — and point `API_BASE_URL`/`SOCKET_URL` at the resulting `https://*.ngrok-free.dev` URL instead. A **release** build (`npx react-native run-android --variant=release`, or `cd android && ./gradlew assembleRelease`) has the JS bundle compiled in and needs neither Metro nor USB — only normal network access to the backend.
+**Testing on a physical phone (not an emulator):** a **debug** build needs Metro reachable from the phone — either plug in via USB and run `adb reverse tcp:8081 tcp:8081`, or put your machine's LAN IP in the app's in-app dev menu (shake the device) if on the same WiFi. A **release** build (`npx react-native run-android --variant=release`, or `cd android && ./gradlew assembleRelease`) has the JS bundle compiled in and needs neither Metro nor USB — only normal network access to the backend. Either way, the phone still needs to reach the *backend* — see the next section.
 
 Verify everything:
 
@@ -107,6 +107,33 @@ npx tsc --noEmit
 npx eslint .
 npx jest --watchAll=false --ci
 ```
+
+## Making the backend reachable from a real phone ("going live" for testing)
+
+Everything above runs the backend on `localhost` — fine for an emulator on the same machine, not reachable from an actual phone unless it's tunneled or hosted somewhere. Two options, depending on what you need:
+
+### Option A — ngrok tunnel (fastest, what this project has actually been tested with)
+
+Gives your local backend a public HTTPS URL in about a minute. Good for testing/demos; the URL is temporary (changes every time you restart the tunnel, unless you pay for a reserved domain).
+
+1. Sign up free at [ngrok.com](https://ngrok.com), then install it (`choco install ngrok` on Windows, `brew install ngrok` on Mac, or download the binary directly).
+2. One-time setup: `ngrok config add-authtoken <your token>` (found on your ngrok dashboard).
+3. With the backend already running (`npm run dev` in `backend/`), open a second terminal and run:
+   ```
+   ngrok http 5000
+   ```
+4. ngrok prints a public URL like `https://random-name.ngrok-free.dev`. Put it in `mobile/.env`:
+   ```
+   API_BASE_URL=https://random-name.ngrok-free.dev/api/v1
+   SOCKET_URL=https://random-name.ngrok-free.dev
+   ```
+5. Rebuild/restart the mobile app so it picks up the new `.env` values. The phone now reaches your backend over **any network** (WiFi, cellular data) — not just the same LAN.
+
+**Keep the ngrok terminal window open** — closing it kills the tunnel and the app will stop reaching the backend until you run `ngrok http 5000` again and update `.env` with the new URL it gives you.
+
+### Option B — real hosting (persistent, for anything beyond local testing)
+
+Not set up in this repo — there's no Dockerfile, hosting config, or deployed instance today. If you need the backend to stay up without your machine running (e.g. handing the app to someone else to use over days, not a one-off test session), you'd deploy `backend/` to a Node host (Render, Railway, Fly.io, a VPS, etc.), point its `MONGO_URI` at the same or a fresh Atlas cluster, set all the same `.env` variables there instead, and point `mobile/.env`'s `API_BASE_URL`/`SOCKET_URL` at that host's permanent URL instead of an ngrok one. That's a real infrastructure decision (which provider, cost, domain) — flagging it as the next step rather than a covered one.
 
 ## Building an APK
 
