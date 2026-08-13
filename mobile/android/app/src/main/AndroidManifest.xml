@@ -1,0 +1,54 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Foreground-only location, for the Driver GPS-tracking feature
+         (4s/15s cadence while the app is open — SOCKET-CONTRACT.md). Deliberately
+         NOT requesting ACCESS_BACKGROUND_LOCATION: nothing in this phase's design
+         calls for tracking while the app is closed/backgrounded, and that
+         permission carries a materially higher Play Store review/privacy bar —
+         not added without an explicit requirement for it. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Required at runtime on Android 13+ (targetSdk 36 here) for any
+         notification — including FCM's background/killed system-tray display —
+         to actually show. Requested via messaging().requestPermission() in
+         src/notifications/pushRegistration.ts, not auto-granted by this
+         manifest entry alone. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+      android:name=".MainApplication"
+      android:label="@string/app_name"
+      android:icon="@mipmap/ic_launcher"
+      android:roundIcon="@mipmap/ic_launcher_round"
+      android:allowBackup="false"
+      android:theme="@style/AppTheme"
+      android:usesCleartextTraffic="${usesCleartextTraffic}"
+      android:networkSecurityConfig="@xml/network_security_config"
+      android:supportsRtl="true">
+      <!-- react-native-config's dotenv.gradle auto-generates this string
+           resource from .env's GOOGLE_MAPS_API_KEY at build time. Left blank
+           for a while during early development — without a real key the
+           Maps SDK renders a solid black screen on Android (not a graceful
+           no-tiles fallback, confirmed on a real device), not just missing
+           tile imagery. A real key is now configured locally in .env
+           (gitignored, not committed here). See .env.example for how to
+           obtain one if it's ever unset again. -->
+      <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="@string/GOOGLE_MAPS_API_KEY" />
+      <activity
+        android:name=".MainActivity"
+        android:label="@string/app_name"
+        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+        android:launchMode="singleTask"
+        android:windowSoftInputMode="adjustResize"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+      </activity>
+    </application>
+</manifest>

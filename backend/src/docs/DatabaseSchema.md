@@ -1,0 +1,14 @@
+users
+owners
+companies
+customers
+drivers
+vehicles
+services
+jobs
+fareCalculations
+vehicleLocations
+jobStatusHistory
+ratings
+notifications
+documents

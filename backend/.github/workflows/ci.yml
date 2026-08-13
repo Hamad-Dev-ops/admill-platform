@@ -1,0 +1,58 @@
+name: CI
+
+# Milestone 11 (architecture-baseline.md §21): typecheck, lint, and the full test
+# suite on every push/PR before merge. Tests run against a real MongoDB Atlas
+# cluster (and real Cloudinary/OpenWeatherMap credentials) via repository secrets —
+# this project's tests have deliberately hit real infrastructure, not mocks, since
+# Milestone 0; this workflow preserves that rather than introducing an isolated
+# test database as a side effect of adding CI.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      NODE_ENV: test
+      PORT: 5000
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+      CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+      OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+      # Optional by design (graceful degradation) — omit as repo secrets entirely if unset.
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+      FUEL_PRICE_EXTERNAL_API_URL: ${{ secrets.FUEL_PRICE_EXTERNAL_API_URL }}
+      FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+      FCM_CLIENT_EMAIL: ${{ secrets.FCM_CLIENT_EMAIL }}
+      FCM_PRIVATE_KEY: ${{ secrets.FCM_PRIVATE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies (clean, exact lockfile)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test

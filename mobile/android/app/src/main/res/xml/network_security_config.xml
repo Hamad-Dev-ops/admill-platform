@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- admill-backend has no TLS termination set up in development/demo environments
+     (plain http://<host>:5000) — Android's release build type disallows cleartext
+     (non-HTTPS) traffic by default (usesCleartextTraffic="false", set automatically
+     by the React Native Gradle plugin for the "release" build type only). Without
+     this file, an installed release APK would silently fail every API/socket call.
+     A network security config takes precedence over the manifest's
+     usesCleartextTraffic attribute, so this applies to both build types. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

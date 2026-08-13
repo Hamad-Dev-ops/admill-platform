@@ -1,0 +1,26 @@
+export enum VehicleStatus {
+  AVAILABLE = "AVAILABLE",
+
+  ASSIGNED = "ASSIGNED",
+
+  ON_RECOVERY = "ON_RECOVERY",
+
+  MAINTENANCE = "MAINTENANCE",
+
+  OFFLINE = "OFFLINE",
+}
+
+export enum VehicleType {
+  TOW_TRUCK = "TOW_TRUCK",
+
+  FLATBED = "FLATBED",
+
+  BIKE_RECOVERY = "BIKE_RECOVERY",
+
+  BOX_RECOVERY = "BOX_RECOVERY",
+
+  PICKUP = "PICKUP",
+
+  SERVICE_VAN = "SERVICE_VAN",
+
+  OTHER = "OTHER"}
