@@ -4,3 +4,5 @@ dist/
 uploads/
 *.log
 .DS_Store
+scripts/e2e-dispatch-smoke.ts
+scripts/.e2e-env

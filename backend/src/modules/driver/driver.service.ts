@@ -7,6 +7,7 @@ import { CompanyRepository } from "../../repositories/company.repository";
 import { CounterRepository } from "../../repositories/counter.repository";
 import { DriverRepository } from "../../repositories/driver.repository";
 import { DriverPositionUpdateInput } from "../../utils/geo";
+import { Checkpoint, logCheckpoint } from "../../utils/checkpoint";
 import { generateBusinessId } from "../../utils/schema/generateBusinessId";
 import { CompanyService } from "../company/company.service";
 import { TrackingService } from "../tracking/tracking.service";
@@ -190,6 +191,15 @@ export const DriverService = {
       throw new AppError(403, "Driver must be approved before going online");
     }
 
-    return DriverRepository.updateById(driver._id!, { status: input.status });
+    const updated = await DriverRepository.updateById(driver._id!, { status: input.status });
+
+    logCheckpoint(Checkpoint.DRIVER_STATUS_CHANGED, {
+      driverId: driver._id!.toString(),
+      userId,
+      from: driver.status,
+      to: input.status,
+    });
+
+    return updated;
   },
 };

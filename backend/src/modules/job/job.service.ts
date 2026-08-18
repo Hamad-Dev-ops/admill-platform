@@ -17,6 +17,8 @@ import { JobRepository } from "../../repositories/job.repository";
 import { JobStatusHistoryRepository } from "../../repositories/jobStatusHistory.repository";
 import { VehicleRepository } from "../../repositories/vehicle.repository";
 import { emitJobAccepted, emitJobNewRequest, emitJobStatusChanged } from "../../socket/job.socket";
+import { Checkpoint, locationSnapshot, logCheckpoint } from "../../utils/checkpoint";
+import { haversineDistanceKm } from "../../utils/geo";
 import { generateBusinessId } from "../../utils/schema/generateBusinessId";
 import { NotificationService } from "../notification/notification.service";
 import { PricingService } from "../pricing/pricing.service";
@@ -116,11 +118,13 @@ async function notifyJobStatusChange(job: IJob, newStatus: JobStatus, requesterR
 async function resolveOperationalCompany() {
   const companyCode = process.env.DEFAULT_COMPANY_CODE;
   if (!companyCode) {
+    logCheckpoint(Checkpoint.JOB_COMPANY_RESOLUTION_FAILED, { reason: "DEFAULT_COMPANY_CODE_unset" }, "error");
     throw new AppError(500, "Booking is temporarily unavailable — no operational company is configured");
   }
 
   const company = await CompanyRepository.findByCompanyCode(companyCode);
   if (!company) {
+    logCheckpoint(Checkpoint.JOB_COMPANY_RESOLUTION_FAILED, { reason: "company_not_found" }, "error");
     throw new AppError(500, "Booking is temporarily unavailable — the configured operational company was not found");
   }
 
@@ -165,25 +169,77 @@ async function getAssignedDriverSummary(driverId?: Types.ObjectId): Promise<IAss
 
 export const JobService = {
   async create(customerUserId: string, input: CreateJobInput) {
+    logCheckpoint(Checkpoint.JOB_CREATE_RECEIVED, { serviceType: input.serviceType });
+
     const customer = await CustomerRepository.findByUserId(customerUserId);
     if (!customer) {
       throw new AppError(404, "Customer profile not found");
     }
+    logCheckpoint(Checkpoint.JOB_CUSTOMER_RESOLVED, { customerId: customer._id!.toString() });
 
     const company = await resolveOperationalCompany();
+    logCheckpoint(Checkpoint.JOB_COMPANY_RESOLVED, { companyId: company._id!.toString() });
 
     const breakdown = await PricingService.calculateFare(
       input.serviceType,
       input.pickupLocation.geo,
       input.destinationLocation.geo
     );
+    logCheckpoint(Checkpoint.JOB_PRICING_COMPLETE, {
+      total: breakdown.total,
+      distanceKm: breakdown.distanceKm,
+    });
 
-    // Nearby drivers are resolved before the job exists so the offer set can be
-    // snapshotted into the same insert — only a driver in this list may later accept
-    // (see accept()); a driver who comes online nearby afterward is not retroactively added.
     const settings = await CompanySettingsRepository.findByCompanyId(company._id!);
     const radiusKm = settings?.defaultServiceRadiusKm ?? DEFAULT_DISPATCH_RADIUS_KM;
+    logCheckpoint(Checkpoint.JOB_DRIVER_SEARCH_START, {
+      companyId: company._id!.toString(),
+      serviceType: input.serviceType,
+      radiusKm,
+      ...locationSnapshot(input.pickupLocation.geo.coordinates),
+    });
     const nearbyDrivers = await DriverRepository.findNearbyAvailable(company._id!, input.pickupLocation.geo, radiusKm);
+
+    if (nearbyDrivers.length === 0) {
+      const roster = await DriverRepository.findAllByCompany(company._id!);
+      const reasons = roster.map((driver) => {
+        const hasLocation = Boolean(driver.currentLocation?.coordinates);
+        const distanceKm =
+          hasLocation && driver.currentLocation
+            ? Math.round(haversineDistanceKm(input.pickupLocation.geo, driver.currentLocation) * 100) / 100
+            : null;
+        return {
+          driverId: driver._id!.toString(),
+          approvalStatus: driver.approvalStatus,
+          status: driver.status,
+          hasLocation,
+          distanceKm,
+          outsideRadius: distanceKm !== null && distanceKm > radiusKm,
+        };
+      });
+      logCheckpoint(
+        Checkpoint.JOB_DRIVER_SEARCH_RESULT,
+        {
+          companyId: company._id!.toString(),
+          serviceType: input.serviceType,
+          radiusKm,
+          candidateCount: roster.length,
+          eligibleCount: 0,
+          offeredCount: 0,
+          reasons,
+        },
+        "warn"
+      );
+    } else {
+      logCheckpoint(Checkpoint.JOB_DRIVER_SEARCH_RESULT, {
+        companyId: company._id!.toString(),
+        serviceType: input.serviceType,
+        radiusKm,
+        candidateCount: nearbyDrivers.length,
+        eligibleCount: nearbyDrivers.length,
+        offeredCount: nearbyDrivers.length,
+      });
+    }
 
     // Per-day sequence (the counter name embeds the date), matching the JOB-YYYYMMDD-NNNNNN
     // format — a fresh 000001 each day, not an ever-growing global sequence.
@@ -216,9 +272,23 @@ export const JobService = {
     });
 
     await JobStatusHistoryRepository.create(job._id!, JobStatus.PENDING, new Types.ObjectId(customerUserId));
+    logCheckpoint(Checkpoint.JOB_CREATED, {
+      jobId: job._id!.toString(),
+      jobNumber: job.jobNumber,
+      offeredCount: nearbyDrivers.length,
+    });
 
     if (nearbyDrivers.length > 0) {
+      logCheckpoint(Checkpoint.JOB_OFFER_EMIT_START, {
+        jobId: job._id!.toString(),
+        companyId: company._id!.toString(),
+        offeredCount: nearbyDrivers.length,
+      });
       emitJobNewRequest(company._id!, job);
+      logCheckpoint(Checkpoint.JOB_OFFER_EMIT_SUCCESS, {
+        jobId: job._id!.toString(),
+        offeredCount: nearbyDrivers.length,
+      });
 
       await Promise.all(
         nearbyDrivers.map((driver) =>
@@ -279,34 +349,42 @@ export const JobService = {
   },
 
   async accept(driverUserId: string, jobId: string) {
+    logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_RECEIVED, { jobId, driverUserId });
     let job = await JobRepository.findById(jobId);
     if (!job) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "job_not_found" }, "warn");
       throw new AppError(404, "Job not found");
     }
 
     const driver = await DriverRepository.findByUserId(driverUserId);
     if (!driver) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "driver_profile_not_found" }, "warn");
       throw new AppError(404, "Driver profile not found");
     }
 
     if (!driver.companyId.equals(job.companyId)) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "company_mismatch" }, "warn");
       throw new AppError(403, "This job does not belong to your company");
     }
 
     if (driver.approvalStatus !== DriverApprovalStatus.APPROVED) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "not_approved" }, "warn");
       throw new AppError(403, "Driver is not approved to accept jobs");
     }
 
     if (driver.status !== DriverStatus.AVAILABLE) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "not_available", status: driver.status }, "warn");
       throw new AppError(409, "You must be AVAILABLE to accept a job");
     }
 
     if (!job.offeredDriverIds.some((id) => id.equals(driver._id!))) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "not_in_offeredDriverIds" }, "warn");
       throw new AppError(403, "This job was not offered to you");
     }
 
     job = await this.expireIfNeeded(job);
     if (job.status === JobStatus.EXPIRED) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "expired" }, "warn");
       throw new AppError(410, "This job has expired");
     }
 
@@ -318,6 +396,7 @@ export const JobService = {
     const accepted = await JobRepository.acceptIfPending(jobId, driver._id!, vehicle?._id, new Date());
 
     if (!accepted) {
+      logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_REJECT, { jobId, reason: "already_accepted" }, "warn");
       throw new AppError(409, "This job has already been accepted by another driver");
     }
 
@@ -329,6 +408,12 @@ export const JobService = {
     }
 
     emitJobAccepted(accepted);
+    logCheckpoint(Checkpoint.JOB_DRIVER_ACCEPT_SUCCESS, {
+      jobId: accepted._id!.toString(),
+      jobNumber: accepted.jobNumber,
+      driverId: driver._id!.toString(),
+      vehicleId: vehicle?._id?.toString(),
+    });
 
     const customer = await CustomerRepository.findById(accepted.customerId);
     if (customer) {
@@ -454,6 +539,18 @@ export const JobService = {
 
     emitJobStatusChanged(updated);
     await notifyJobStatusChange(updated, input.status, requesterRole);
+
+    logCheckpoint(Checkpoint.JOB_STATUS_CHANGED, {
+      jobId: updated._id!.toString(),
+      from: job.status,
+      to: input.status,
+      requesterId,
+      requesterRole,
+      driverId: updated.driverId?.toString(),
+      customerVisibleLocation: [JobStatus.ACCEPTED, JobStatus.EN_ROUTE, JobStatus.ARRIVED, JobStatus.STARTED].includes(
+        input.status
+      ),
+    });
 
     return updated;
   },

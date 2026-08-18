@@ -32,11 +32,8 @@ import { SERVICE_TYPE_LABEL } from '../../owner/fleet/vehicleLabels';
 type Props = NativeStackScreenProps<CustomerStackParamList, 'JobDetail'>;
 
 const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'EXPIRED'];
-// Narrower than "non-terminal" — GAP-REPORT.md gap #13, re-verified
-// directly against tracking.service.ts's assertCanViewDriverLocation: a
-// customer can only ever see driver location while the job is EN_ROUTE or
-// STARTED, not ACCEPTED/ARRIVED.
-const LOCATION_VISIBLE_STATUSES = ['EN_ROUTE', 'STARTED'];
+// Customer-visible live location while the assigned driver is on the job.
+const LOCATION_VISIBLE_STATUSES = ['ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'STARTED'];
 
 export function CustomerJobDetailScreen({ navigation, route }: Props) {
   const { jobId } = route.params;
@@ -55,7 +52,10 @@ export function CustomerJobDetailScreen({ navigation, route }: Props) {
   });
 
   useEffect(() => {
-    SocketService.subscribeToJob(jobId);
+    const subscribe = () => SocketService.subscribeToJob(jobId);
+    subscribe();
+    SocketService.addConnectListener(subscribe);
+    return () => SocketService.removeConnectListener(subscribe);
   }, [jobId]);
 
   const refetchJob = () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId] });

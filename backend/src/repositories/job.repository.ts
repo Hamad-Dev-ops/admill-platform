@@ -60,6 +60,14 @@ export const JobRepository = {
     });
   },
 
+  async findAssignedInProgressByDriverId(driverId: string | Types.ObjectId) {
+    return JobModel.findOne({
+      driverId,
+      isDeleted: false,
+      status: { $in: [JobStatus.ACCEPTED, JobStatus.EN_ROUTE, JobStatus.ARRIVED, JobStatus.STARTED] },
+    });
+  },
+
   async findManyByCompany(
     companyId: string | Types.ObjectId,
     filter: { status?: JobStatus },

@@ -9,6 +9,7 @@ import { colors, spacing } from '../../../design-system/tokens';
 import { SERVICE_TYPE_LABEL } from '../../owner/fleet/vehicleLabels';
 import type { Job } from '../../../types/entities';
 import type { JobPayload } from '../../../socket/SocketService';
+import { flowLog } from '../../../utils/flowLog';
 
 export interface IncomingJobOfferModalProps {
   offer: JobPayload | null;
@@ -48,13 +49,18 @@ export function IncomingJobOfferModal({ offer, onDismiss, onAccepted }: Incoming
   }, [job?._id]);
 
   const acceptMutation = useMutation({
-    mutationFn: (jobId: string) => acceptJob(jobId),
+    mutationFn: (jobId: string) => {
+      flowLog('driver.offer_accept_start', { jobId });
+      return acceptJob(jobId);
+    },
     onSuccess: (acceptedJob) => {
+      flowLog('driver.offer_accept_success', { jobId: acceptedJob._id });
       queryClient.invalidateQueries({ queryKey: ['drivers', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       onAccepted(acceptedJob._id);
     },
     onError: (error) => {
+      flowLog('driver.offer_accept_failure', { message: getApiErrorMessage(error, 'accept failed') });
       // A lost race or expiry are expected, real outcomes here — not bugs
       // (JOB-LIFECYCLE.md) — shown as a plain informational message, then
       // the offer is cleared either way since it's no longer actionable.

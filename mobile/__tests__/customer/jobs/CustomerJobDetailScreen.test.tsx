@@ -14,7 +14,11 @@ jest.mock('../../../src/hooks/useSocketEvent', () => ({
 }));
 
 jest.mock('../../../src/socket/SocketService', () => ({
-  SocketService: { subscribeToJob: jest.fn() },
+  SocketService: {
+    subscribeToJob: jest.fn(),
+    addConnectListener: jest.fn(),
+    removeConnectListener: jest.fn(),
+  },
 }));
 
 // getRoute is unit-tested exhaustively in __tests__/utils/directions.test.ts
@@ -94,6 +98,10 @@ describe('CustomerJobDetailScreen', () => {
 
   it('renders the route polyline once getRoute resolves real geometry', async () => {
     mock.onGet('/jobs/j1').reply(200, { success: true, data: jobPayload({ status: 'ACCEPTED' }) });
+    mock.onGet('/drivers/d1/location').reply(200, {
+      success: true,
+      data: { driverId: 'd1', location: { type: 'Point', coordinates: [55.2, 25.15] } },
+    });
     mockGetRoute.mockResolvedValue([
       { latitude: 25.2, longitude: 55.27 },
       { latitude: 25.08, longitude: 55.14 },
@@ -141,13 +149,18 @@ describe('CustomerJobDetailScreen', () => {
     expect(queryByText(/★/)).toBeNull();
   });
 
-  it('does not show a driver marker/location while ACCEPTED (gap #13 — visible only EN_ROUTE/STARTED)', async () => {
+  it('shows live driver location while ACCEPTED', async () => {
     mock.onGet('/jobs/j1').reply(200, { success: true, data: jobPayload({ status: 'ACCEPTED' }) });
+    mock.onGet('/drivers/d1/location').reply(200, {
+      success: true,
+      data: { driverId: 'd1', location: { type: 'Point', coordinates: [55.2, 25.15] } },
+    });
 
-    const { getByText } = await renderScreen();
+    const { queryByText, getAllByTestId } = await renderScreen();
 
-    await waitFor(() => expect(getByText("Live location isn't available until your driver is on the way.")).toBeTruthy());
-    expect(mock.history.get.find((req) => req.url === '/drivers/d1/location')).toBeUndefined();
+    await waitFor(() => expect(mock.history.get.find((req) => req.url === '/drivers/d1/location')).toBeTruthy());
+    await waitFor(() => expect(getAllByTestId('map-marker').length).toBe(3));
+    expect(queryByText("Live location isn't available until your driver is on the way.")).toBeNull();
   });
 
   it('fetches the initial driver location snapshot while EN_ROUTE and reflects a live socket update', async () => {

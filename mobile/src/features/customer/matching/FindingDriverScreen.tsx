@@ -29,14 +29,21 @@ export function FindingDriverScreen({ route }: Props) {
   const [timedOut, setTimedOut] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const onConnected = () => {
+      SocketService.subscribeToJob(jobId);
+      void queryClient.invalidateQueries({ queryKey: ['jobs', jobId] });
+    };
+    onConnected();
+    SocketService.addConnectListener(onConnected);
+    return () => SocketService.removeConnectListener(onConnected);
+  }, [jobId, queryClient]);
+
   const jobQuery = useQuery({
     queryKey: ['jobs', jobId],
     queryFn: () => getJobById(jobId),
+    refetchInterval: (query) => (query.state.data?.status === 'PENDING' ? 5000 : false),
   });
-
-  useEffect(() => {
-    SocketService.subscribeToJob(jobId);
-  }, [jobId]);
 
   useSocketEvent('job:accepted', (job) => {
     if (job._id === jobId) {

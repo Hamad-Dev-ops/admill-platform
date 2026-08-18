@@ -4,11 +4,13 @@ import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import { env } from "./config/env";
+import { isDatabaseReady } from "./config/database";
 import { AppError } from "./errors/AppError";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { requestLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./responses/ApiResponse";
 import routes from "./routes";
+import { Checkpoint, logCheckpoint } from "./utils/checkpoint";
 
 export const app = express();
 
@@ -28,7 +30,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
 
 app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).json(ApiResponse.success({ status: "OK", timestamp: new Date().toISOString() }));
+  const mongoOk = isDatabaseReady();
+  logCheckpoint(Checkpoint.HEALTH_CHECK, { mongoOk });
+  res.status(mongoOk ? 200 : 503).json(
+    ApiResponse.success({
+      status: mongoOk ? "OK" : "DEGRADED",
+      mongo: mongoOk ? "connected" : "disconnected",
+      timestamp: new Date().toISOString(),
+    })
+  );
 });
 
 app.use("/api", routes);

@@ -13,7 +13,16 @@ export function errorMiddleware(
   const isOperational = isAppError ? err.isOperational : false;
 
   logger.error(
-    { requestId: req.requestId, statusCode, stack: err.stack },
+    {
+      checkpoint: "http.error",
+      requestId: req.requestId,
+      method: req.method,
+      path: req.originalUrl,
+      userId: req.user?.id,
+      role: req.user?.role,
+      statusCode,
+      stack: err.stack,
+    },
     err.message
   );
 

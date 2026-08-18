@@ -7,6 +7,7 @@ import { CompanyRepository } from "../repositories/company.repository";
 import { CustomerRepository } from "../repositories/customer.repository";
 import { DriverRepository } from "../repositories/driver.repository";
 import { JobRepository } from "../repositories/job.repository";
+import { Checkpoint, logCheckpoint } from "../utils/checkpoint";
 
 // Best-effort, same principle NotificationService (M8) will use: a socket emit failing
 // (e.g. no connected clients) must never fail the REST request that triggered it.
@@ -44,7 +45,14 @@ export function registerJobSocketHandlers(socket: Socket): void {
   socket.on("job:subscribe", async (jobId: string) => {
     try {
       const job = await JobRepository.findById(jobId);
-      if (!job) return;
+      if (!job) {
+        logCheckpoint(
+          Checkpoint.SOCKET_JOB_SUBSCRIBE_REJECT,
+          { socketId: socket.id, userId: socket.user.id, role: socket.user.role, jobId, reason: "job_not_found" },
+          "warn"
+        );
+        return;
+      }
 
       const { user } = socket;
       let allowed = false;
@@ -62,12 +70,34 @@ export function registerJobSocketHandlers(socket: Socket): void {
 
       if (allowed) {
         socket.join(`job:${jobId}`);
-        // Deterministic ack so a client (or a test) can know the join actually
-        // happened before it proceeds, rather than guessing with a timeout.
         socket.emit("job:subscribed", jobId);
+        logCheckpoint(Checkpoint.SOCKET_JOB_SUBSCRIBE, {
+          socketId: socket.id,
+          userId: user.id,
+          role: user.role,
+          jobId,
+          jobStatus: job.status,
+        });
+      } else {
+        logCheckpoint(
+          Checkpoint.SOCKET_JOB_SUBSCRIBE_REJECT,
+          {
+            socketId: socket.id,
+            userId: user.id,
+            role: user.role,
+            jobId,
+            reason: "not_authorized",
+            jobStatus: job.status,
+          },
+          "warn"
+        );
       }
-    } catch {
-      // subscription is best-effort — a failure here just means no live updates
+    } catch (err) {
+      logCheckpoint(
+        Checkpoint.SOCKET_JOB_SUBSCRIBE_REJECT,
+        { socketId: socket.id, userId: socket.user.id, role: socket.user.role, jobId, reason: "handler_error", err },
+        "warn"
+      );
     }
   });
 }

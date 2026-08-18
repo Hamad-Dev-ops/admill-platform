@@ -5,6 +5,7 @@ import { RefreshTokenRepository } from "../../repositories/refreshToken.reposito
 import { UserRepository } from "../../repositories/user.repository";
 import { comparePassword, hashPassword } from "../../utils/bcrypt";
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from "../../utils/jwt";
+import { Checkpoint, logCheckpoint } from "../../utils/checkpoint";
 import { LoginInput, RegisterInput } from "./auth.validator";
 
 interface ITokenPair {
@@ -68,12 +69,14 @@ export const AuthService = {
     const user = await UserRepository.findByEmailWithPassword(input.email);
 
     if (!user || !(await comparePassword(input.password, user.password))) {
+      logCheckpoint(Checkpoint.AUTH_LOGIN_FAILURE, { reason: "invalid_credentials" }, "warn");
       throw new AppError(401, "Invalid email or password");
     }
 
     await UserRepository.updateLastLogin(user._id.toString());
 
     const tokens = await issueTokenPair(user._id, user.role, deviceInfo);
+    logCheckpoint(Checkpoint.AUTH_LOGIN_SUCCESS, { userId: user._id.toString(), role: user.role });
 
     return { user: toPublicUser(user), ...tokens };
   },

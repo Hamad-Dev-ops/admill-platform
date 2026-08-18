@@ -35,6 +35,9 @@ const envSchema = z.object({
   FCM_PROJECT_ID: z.string().optional(),
   FCM_CLIENT_EMAIL: z.string().optional(),
   FCM_PRIVATE_KEY: z.string().optional(),
+
+  // Override pino level for QA/debug (e.g. LOG_LEVEL=debug to see every GPS ping).
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 
 type Env = z.infer<typeof envSchema>;

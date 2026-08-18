@@ -4,6 +4,7 @@ import { env } from "./src/config/env";
 import { connectDatabase } from "./src/config/database";
 import { initSocket } from "./src/config/socket";
 import { registerSocketHandlers } from "./src/socket";
+import { Checkpoint, logCheckpoint } from "./src/utils/checkpoint";
 import { logger } from "./src/utils/logger";
 
 async function bootstrap(): Promise<void> {
@@ -25,6 +26,12 @@ async function bootstrap(): Promise<void> {
   registerSocketHandlers();
 
   httpServer.listen(env.PORT, () => {
+    logCheckpoint(Checkpoint.SERVER_READY, {
+      port: env.PORT,
+      nodeEnv: env.NODE_ENV,
+      logLevel: env.LOG_LEVEL,
+      defaultCompanyConfigured: Boolean(process.env.DEFAULT_COMPANY_CODE),
+    });
     logger.info(`Admill backend running on http://localhost:${env.PORT}`);
   });
 }

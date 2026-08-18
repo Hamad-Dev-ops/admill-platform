@@ -23,6 +23,9 @@ export function configureApiClient(handlers: SessionHandlers): void {
 export const apiClient = axios.create({
   baseURL: env.API_BASE_URL,
   timeout: 15000,
+  // ngrok free-tier interstitial (ERR_NGROK_6024) otherwise returns HTML 200
+  // instead of the API envelope when the client looks browser-like.
+  headers: { 'ngrok-skip-browser-warning': 'true' },
 });
 
 apiClient.interceptors.request.use((config) => {

@@ -14,6 +14,7 @@ import { TimeFactor } from "./factors/time.factor";
 import { IFareBreakdown, IPricingContext, IPricingFactor } from "./factors/types";
 import { WeatherFactor } from "./factors/weather.factor";
 import { PricingConfigService } from "./pricingConfig.service";
+import { Checkpoint, logCheckpoint } from "../../utils/checkpoint";
 
 // The Strategy list. Adding a factor later means adding one line here — nothing else
 // in this file changes, which is the actual acceptance test for the whole pattern.
@@ -50,37 +51,53 @@ export const PricingService = {
     pickupLocation: IGeoPoint,
     destinationLocation: IGeoPoint
   ): Promise<IFareBreakdown> {
-    const service = await ServiceRepository.findByType(serviceType);
+    logCheckpoint(Checkpoint.PRICING_ESTIMATE_RECEIVED, { serviceType });
+    try {
+      const service = await ServiceRepository.findByType(serviceType);
 
-    if (!service || !service.isAvailable) {
-      throw new AppError(404, "This service is not currently available");
+      if (!service || !service.isAvailable) {
+        throw new AppError(404, "This service is not currently available");
+      }
+
+      const pricingConfig = await PricingConfigService.getActive();
+
+      const [route, weather, currentFuelPrice, demand] = await Promise.all([
+        distanceProvider.getRoute(pickupLocation, destinationLocation),
+        weatherProvider.getCurrentCondition(pickupLocation),
+        fuelPriceProvider.getCurrentFuelPrice(),
+        DemandEstimator.getSnapshot(pricingConfig.lowSupplyThreshold),
+      ]);
+
+      const context: IPricingContext = {
+        serviceType,
+        distanceKm: route.distanceKm,
+        durationMinutes: route.durationMinutes,
+        timestamp: new Date(),
+        baseFare: service.baseFare,
+        currentFuelPrice,
+        fuelConsumptionPerKm: pricingConfig.fuelConsumptionPerKm,
+        perKmRate: pricingConfig.perKmRate,
+        peakHourWindows: pricingConfig.peakHourWindows,
+        peakHourSurcharge: pricingConfig.peakHourSurcharge,
+        demandRatio: demand.demandRatio,
+        maxDemandSurcharge: pricingConfig.maxDemandSurcharge,
+        weatherCondition: weather.condition,
+      };
+
+      const breakdown = runFactors(activeFactors, context);
+      logCheckpoint(Checkpoint.PRICING_ESTIMATE_SUCCESS, {
+        serviceType,
+        distanceKm: breakdown.distanceKm,
+        total: breakdown.total,
+      });
+      return breakdown;
+    } catch (err) {
+      logCheckpoint(
+        Checkpoint.PRICING_ESTIMATE_FAILURE,
+        { serviceType, message: err instanceof Error ? err.message : "pricing failed" },
+        "warn"
+      );
+      throw err;
     }
-
-    const pricingConfig = await PricingConfigService.getActive();
-
-    const [route, weather, currentFuelPrice, demand] = await Promise.all([
-      distanceProvider.getRoute(pickupLocation, destinationLocation),
-      weatherProvider.getCurrentCondition(pickupLocation),
-      fuelPriceProvider.getCurrentFuelPrice(),
-      DemandEstimator.getSnapshot(pricingConfig.lowSupplyThreshold),
-    ]);
-
-    const context: IPricingContext = {
-      serviceType,
-      distanceKm: route.distanceKm,
-      durationMinutes: route.durationMinutes,
-      timestamp: new Date(),
-      baseFare: service.baseFare,
-      currentFuelPrice,
-      fuelConsumptionPerKm: pricingConfig.fuelConsumptionPerKm,
-      perKmRate: pricingConfig.perKmRate,
-      peakHourWindows: pricingConfig.peakHourWindows,
-      peakHourSurcharge: pricingConfig.peakHourSurcharge,
-      demandRatio: demand.demandRatio,
-      maxDemandSurcharge: pricingConfig.maxDemandSurcharge,
-      weatherCondition: weather.condition,
-    };
-
-    return runFactors(activeFactors, context);
   },
 };

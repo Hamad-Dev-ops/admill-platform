@@ -88,12 +88,9 @@ export async function updateMyDriverLocation(payload: DriverPositionUpdate): Pro
   return data.data;
 }
 
-// Self / owning OWNER / a CUSTOMER currently on an active job with this
-// driver — but narrower than "active job": tracking.service.ts's
-// assertCanViewDriverLocation only allows it while that job's status is
-// EN_ROUTE or STARTED (not ACCEPTED/ARRIVED) — GAP-REPORT.md gap #13.
-// Callers must expect a 403 outside that window and treat it as
-// "not available yet", not an error.
+// Self / owning OWNER / a CUSTOMER currently on an in-progress job with this
+// driver (ACCEPTED, EN_ROUTE, ARRIVED, or STARTED). Callers must expect a 403
+// outside that window and treat it as "not available yet", not an error.
 export interface DriverLocationResult {
   driverId: string;
   location: GeoPoint | null;

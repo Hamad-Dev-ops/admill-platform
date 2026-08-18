@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import Geolocation from '@react-native-community/geolocation';
 import MapView, { Marker } from 'react-native-maps';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
@@ -13,7 +12,13 @@ import { createJob } from '../../../api/jobs.api';
 import { estimateFare } from '../../../api/pricing.api';
 import { colors, spacing } from '../../../design-system/tokens';
 import type { CustomerStackParamList } from '../../../navigation/customer/types';
-import { checkLocationPermission, openAppSettings, requestLocationPermission } from '../../../utils/locationPermissions';
+import { getDevicePosition } from '../../../utils/deviceLocation';
+import { flowCoords, flowLog } from '../../../utils/flowLog';
+import {
+  checkLocationPermission,
+  openAppSettings,
+  requestLocationPermission,
+} from '../../../utils/locationPermissions';
 import { SERVICE_TYPE_LABEL } from '../../owner/fleet/vehicleLabels';
 import { isOnSiteService } from './onSiteServiceTypes';
 
@@ -24,6 +29,8 @@ interface LocationPoint {
   longitude: number;
 }
 
+const DUBAI_FALLBACK = { latitude: 25.2048, longitude: 55.2708, latitudeDelta: 0.1, longitudeDelta: 0.1 };
+
 export function FareEstimateScreen({ route }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<CustomerStackParamList>>();
   const queryClient = useQueryClient();
@@ -32,43 +39,44 @@ export function FareEstimateScreen({ route }: Props) {
 
   const [permissionStatus, setPermissionStatus] = useState<'checking' | 'granted' | 'denied' | 'blocked'>('checking');
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
   const [destination, setDestination] = useState<LocationPoint | null>(null);
   const [destinationLabel, setDestinationLabel] = useState('');
   const [bookingError, setBookingError] = useState<string | null>(null);
 
-  // One-shot pickup capture, not continuous tracking — Customer Home
-  // deliberately skips requesting permission, so this screen is the actual
-  // point of first use, matching the design's map-first request flow.
-  useEffect(() => {
-    let cancelled = false;
-
-    async function capturePickup() {
-      let status = await checkLocationPermission();
-      if (status !== 'granted') {
-        status = await requestLocationPermission();
-      }
-      if (cancelled) return;
-      setPermissionStatus(status);
-      if (status !== 'granted') return;
-
-      Geolocation.getCurrentPosition(
-        (position) => {
-          if (cancelled) return;
-          setPickup({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-        },
-        (error) => {
-          if (!cancelled) setLocationError(error.message);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
-      );
+  const capturePickup = useCallback(async () => {
+    let status = await checkLocationPermission();
+    if (status !== 'granted') {
+      status = await requestLocationPermission();
+    }
+    setPermissionStatus(status);
+    flowLog('customer.location.permission', { status });
+    if (status !== 'granted') {
+      return;
     }
 
-    capturePickup();
-    return () => {
-      cancelled = true;
-    };
+    setLocating(true);
+    setLocationError(null);
+    flowLog('customer.location.request_start');
+    try {
+      const position = await getDevicePosition();
+      const point = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      setPickup(point);
+      flowLog('customer.location.success', flowCoords(point.latitude, point.longitude));
+      flowLog('customer.pickup_set', { source: 'gps', ...flowCoords(point.latitude, point.longitude) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to get current location';
+      setLocationError(message);
+      flowLog('customer.location.failure', { message });
+    } finally {
+      setLocating(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void capturePickup();
+  }, [capturePickup]);
 
   useEffect(() => {
     if (!needsDestination && pickup) {
@@ -76,22 +84,49 @@ export function FareEstimateScreen({ route }: Props) {
     }
   }, [needsDestination, pickup]);
 
+  const handleMapPress = (coordinate: LocationPoint) => {
+    if (!pickup) {
+      setPickup(coordinate);
+      setLocationError(null);
+      flowLog('customer.pickup_set', { source: 'map', ...flowCoords(coordinate.latitude, coordinate.longitude) });
+      return;
+    }
+    if (needsDestination) {
+      setDestination(coordinate);
+      flowLog('customer.destination_set', flowCoords(coordinate.latitude, coordinate.longitude));
+    }
+  };
+
   const readyForEstimate = !!pickup && (!needsDestination || !!destination);
 
   const estimateQuery = useQuery({
-    queryKey: ['pricing', 'estimate', serviceType, pickup?.latitude, pickup?.longitude, destination?.latitude, destination?.longitude],
-    queryFn: () =>
-      estimateFare({
-        serviceType,
-        pickupLocation: { type: 'Point', coordinates: [pickup!.longitude, pickup!.latitude] },
-        destinationLocation: { type: 'Point', coordinates: [destination!.longitude, destination!.latitude] },
-      }),
+    queryKey: [
+      'pricing',
+      'estimate',
+      serviceType,
+      pickup?.latitude,
+      pickup?.longitude,
+      destination?.latitude,
+      destination?.longitude,
+    ],
+    queryFn: async () => {
+      flowLog('pricing.request_start', { serviceType });
+      try {
+        const result = await estimateFare({
+          serviceType,
+          pickupLocation: { type: 'Point', coordinates: [pickup!.longitude, pickup!.latitude] },
+          destinationLocation: { type: 'Point', coordinates: [destination!.longitude, destination!.latitude] },
+        });
+        flowLog('pricing.request_success', { total: result.total, distanceKm: result.distanceKm });
+        return result;
+      } catch (error) {
+        flowLog('pricing.request_failure', { message: getApiErrorMessage(error, 'estimate failed') });
+        throw error;
+      }
+    },
     enabled: readyForEstimate,
   });
 
-  // Gap #14 resolved — the backend now resolves the operational company
-  // itself; this request carries no company concept at all
-  // (frontend-docs/GAP-REPORT.md, frontend-docs/API-CONTRACT.md).
   const createJobMutation = useMutation({
     mutationFn: () => {
       const pickupAddress = 'Current location';
@@ -100,6 +135,7 @@ export function FareEstimateScreen({ route }: Props) {
         ? destinationLabel.trim() || 'Selected location'
         : pickupAddress;
 
+      flowLog('job.create_start', { serviceType });
       return createJob({
         serviceType,
         pickupLocation: {
@@ -113,13 +149,16 @@ export function FareEstimateScreen({ route }: Props) {
       });
     },
     onSuccess: (job) => {
+      flowLog('job.create_success', { jobId: job._id, jobNumber: job.jobNumber });
       setBookingError(null);
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      // replace, not navigate — a submitted request has nothing to "go back"
-      // to on this screen; FindingDriver is the real next state (4.7).
       navigation.replace('FindingDriver', { jobId: job._id });
     },
-    onError: (error) => setBookingError(getApiErrorMessage(error, 'Unable to request recovery')),
+    onError: (error) => {
+      const message = getApiErrorMessage(error, 'Unable to request recovery');
+      flowLog('job.create_failure', { message });
+      setBookingError(message);
+    },
   });
 
   return (
@@ -135,29 +174,26 @@ export function FareEstimateScreen({ route }: Props) {
               ? 'Location access is blocked. Enable it in Settings to set your pickup point.'
               : 'Location access is needed to set your pickup point.'
           }
-          onRetry={permissionStatus === 'blocked' ? openAppSettings : () => requestLocationPermission().then(setPermissionStatus)}
+          onRetry={
+            permissionStatus === 'blocked'
+              ? openAppSettings
+              : () => requestLocationPermission().then((status) => {
+                  setPermissionStatus(status);
+                  if (status === 'granted') void capturePickup();
+                })
+          }
         />
       )}
 
-      {!!locationError && permissionStatus === 'granted' && !pickup && (
-        <ErrorState message={locationError} onRetry={() => setLocationError(null)} />
-      )}
-
-      {permissionStatus === 'granted' && (pickup || locationError) && (
+      {permissionStatus === 'granted' && (
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.mapWrap}>
             <MapView
               style={styles.map}
               initialRegion={
-                pickup
-                  ? { ...pickup, latitudeDelta: 0.05, longitudeDelta: 0.05 }
-                  : { latitude: 25.2048, longitude: 55.2708, latitudeDelta: 0.1, longitudeDelta: 0.1 }
+                pickup ? { ...pickup, latitudeDelta: 0.05, longitudeDelta: 0.05 } : DUBAI_FALLBACK
               }
-              onPress={
-                needsDestination
-                  ? (event) => setDestination(event.nativeEvent.coordinate)
-                  : undefined
-              }
+              onPress={(event) => handleMapPress(event.nativeEvent.coordinate)}
             >
               {pickup && <Marker coordinate={pickup} title="Pickup" pinColor={colors.success} />}
               {destination && needsDestination && (
@@ -166,7 +202,23 @@ export function FareEstimateScreen({ route }: Props) {
             </MapView>
           </View>
 
-          {needsDestination && !destination && (
+          {locating && !pickup && (
+            <Text variant="bodySmall" style={styles.hint}>
+              Getting your current location…
+            </Text>
+          )}
+
+          {!!locationError && !pickup && (
+            <InlineError>{`${locationError} You can retry GPS or tap the map to set pickup.`}</InlineError>
+          )}
+
+          {!pickup && !locating && (
+            <Text variant="bodySmall" style={styles.hint}>
+              Tap the map to set your pickup location.
+            </Text>
+          )}
+
+          {pickup && needsDestination && !destination && (
             <Text variant="bodySmall" style={styles.hint}>
               Tap the map to set your drop-off location.
             </Text>
@@ -181,12 +233,22 @@ export function FareEstimateScreen({ route }: Props) {
             />
           )}
 
+          {!pickup && (
+            <Button variant="secondary" onPress={() => void capturePickup()} loading={locating} disabled={locating}>
+              Retry current location
+            </Button>
+          )}
+
           <Card>
             <Card.Content style={styles.cardContent}>
               <Text variant="titleSmall">Estimated fare</Text>
               {!readyForEstimate && (
                 <Text variant="bodySmall" style={styles.muted}>
-                  {needsDestination ? 'Set a drop-off location to see your fare.' : 'Getting your location…'}
+                  {!pickup
+                    ? 'Set a pickup location to continue.'
+                    : needsDestination
+                      ? 'Set a drop-off location to see your fare.'
+                      : 'Getting your location…'}
                 </Text>
               )}
               {readyForEstimate && estimateQuery.isLoading && <LoadingState />}

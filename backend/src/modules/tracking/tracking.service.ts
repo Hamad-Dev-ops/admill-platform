@@ -1,4 +1,5 @@
 import { Types } from "mongoose";
+import { JobStatus } from "../../constants/job.enum";
 import { UserRole } from "../../constants/role.enum";
 import { AppError } from "../../errors/AppError";
 import { cacheProvider } from "../../infrastructure/cache/inMemoryCache.provider";
@@ -11,6 +12,7 @@ import { LocationHistoryRepository } from "../../repositories/locationHistory.re
 import { CompanyService } from "../company/company.service";
 import { IDriverPositionMeta } from "./tracking.store.interface";
 import { trackingStore } from "./mongoTracking.store";
+import { Checkpoint, locationSnapshot, logCheckpoint } from "../../utils/checkpoint";
 
 // Sampling window: rapid GPS pings (~3-5s) always mutate Driver.currentLocation, but
 // LocationHistory is written far less often — the baseline's stated 15-30s window,
@@ -91,9 +93,9 @@ export interface IDriverLocationResult {
 // modules/driver/driver.service.ts's assertDriverAccess (self-or-owning-company)
 // exactly for the DRIVER/OWNER cases, extended with the one case that's specific to
 // location viewing: a CUSTOMER may see this driver's position only while that driver
-// is actively working that customer's own job. "Active" reuses the exact same
-// EN_ROUTE/STARTED definition Decision 2 already established for LocationHistory
-// sampling, rather than inventing a second definition of "active job."
+// is actively working that customer's own job. LocationHistory sampling still
+// uses EN_ROUTE/STARTED only; customer live location is visible from ACCEPTED
+// through STARTED so the map can update as soon as a driver accepts.
 async function assertCanViewDriverLocation(
   requesterId: string,
   requesterRole: UserRole,
@@ -110,7 +112,7 @@ async function assertCanViewDriverLocation(
 
   if (requesterRole === UserRole.CUSTOMER) {
     const customer = await CustomerRepository.findByUserId(requesterId);
-    const activeJob = customer ? await JobRepository.findActiveByDriverId(driver._id!) : null;
+    const activeJob = customer ? await JobRepository.findAssignedInProgressByDriverId(driver._id!) : null;
 
     if (customer?._id && activeJob?.customerId && customer._id.equals(activeJob.customerId)) {
       return;
@@ -133,10 +135,25 @@ export const TrackingService = {
       throw new AppError(404, "Driver profile not found");
     }
 
-    const activeJob = await JobRepository.findActiveByDriverId(driver._id!);
-    const sampled = activeJob ? await maybeSampleLocationHistory(driver._id!, activeJob._id!, point, meta) : false;
+    const inProgressJob = await JobRepository.findAssignedInProgressByDriverId(driver._id!);
+    const sampleJob =
+      inProgressJob && (inProgressJob.status === JobStatus.EN_ROUTE || inProgressJob.status === JobStatus.STARTED)
+        ? inProgressJob
+        : null;
+    const sampled = sampleJob ? await maybeSampleLocationHistory(driver._id!, sampleJob._id!, point, meta) : false;
 
-    return { driver, activeJobId: activeJob?._id, sampled };
+    logCheckpoint(Checkpoint.TRACKING_LOCATION_SAVED, {
+      driverId: driver._id!.toString(),
+      userId,
+      transport: "service",
+      ...locationSnapshot(point.coordinates),
+      driverStatus: driver.status,
+      activeJobId: inProgressJob?._id?.toString(),
+      historySampled: sampled,
+      accuracy: meta.accuracy,
+    });
+
+    return { driver, activeJobId: inProgressJob?._id, sampled };
   },
 
   // Baseline-required fallback/debug endpoint (GET /drivers/:id/location). Never
@@ -149,6 +166,16 @@ export const TrackingService = {
     }
 
     await assertCanViewDriverLocation(requesterId, requesterRole, driver);
+
+    logCheckpoint(Checkpoint.TRACKING_LOCATION_READ, {
+      requesterId,
+      requesterRole,
+      driverId: driver._id!.toString(),
+      hasLocation: Boolean(driver.currentLocation),
+      ...(driver.currentLocation
+        ? locationSnapshot(driver.currentLocation.coordinates)
+        : {}),
+    });
 
     return { driverId: driver._id!, location: driver.currentLocation ?? null };
   },

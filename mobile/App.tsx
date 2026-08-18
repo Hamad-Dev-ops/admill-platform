@@ -14,6 +14,9 @@ import { AuthProvider } from './src/auth/AuthContext';
 import { queryClient } from './src/config/queryClient';
 import { paperTheme } from './src/design-system/theme';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { configureDeviceLocation } from './src/utils/deviceLocation';
+
+configureDeviceLocation();
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';

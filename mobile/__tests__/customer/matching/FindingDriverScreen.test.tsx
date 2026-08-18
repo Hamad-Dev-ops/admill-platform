@@ -15,7 +15,11 @@ jest.mock('../../../src/hooks/useSocketEvent', () => ({
 
 const mockSubscribeToJob = jest.fn();
 jest.mock('../../../src/socket/SocketService', () => ({
-  SocketService: { subscribeToJob: (...args: unknown[]) => mockSubscribeToJob(...args) },
+  SocketService: {
+    subscribeToJob: (...args: unknown[]) => mockSubscribeToJob(...args),
+    addConnectListener: jest.fn(),
+    removeConnectListener: jest.fn(),
+  },
 }));
 
 const mockNavigate = jest.fn();

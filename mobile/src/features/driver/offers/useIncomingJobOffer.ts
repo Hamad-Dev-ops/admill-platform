@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getMyDriverProfile } from '../../../api/drivers.api';
 import { useSocketEvent } from '../../../hooks/useSocketEvent';
 import type { JobPayload } from '../../../socket/SocketService';
+import { flowLog } from '../../../utils/flowLog';
 
 // job:new-request is broadcast to EVERY socket in the company fleet room —
 // it is NOT pre-filtered to only the offered drivers (verified directly
@@ -64,9 +65,17 @@ export function useIncomingJobOffer() {
       return;
     }
 
-    const offeredDriverIds = (job.offeredDriverIds as string[] | undefined) ?? [];
-    if (!offeredDriverIds.includes(myId)) {
-      return; // Not offered to this driver — ignore, per the note above.
+    const offeredDriverIds = ((job.offeredDriverIds as unknown[]) ?? []).map((id) => String(id));
+    const match = offeredDriverIds.includes(myId);
+    flowLog('driver.offer_received', {
+      jobId: job._id,
+      driverProfileId: myId,
+      offeredCount: offeredDriverIds.length,
+      match,
+    });
+    if (!match) {
+      flowLog('driver.offer_ignored', { jobId: job._id, driverProfileId: myId });
+      return;
     }
 
     if (job._id) {
@@ -74,6 +83,7 @@ export function useIncomingJobOffer() {
       seenJobIdsRef.current.add(job._id);
     }
 
+    flowLog('driver.offer_shown', { jobId: job._id });
     setOffer(job);
   }, []);
 

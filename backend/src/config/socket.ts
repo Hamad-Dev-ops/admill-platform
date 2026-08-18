@@ -1,5 +1,6 @@
 import { Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
+import { Checkpoint, logCheckpoint } from "../utils/checkpoint";
 import { verifyAccessToken } from "../utils/jwt";
 import { env } from "./env";
 
@@ -12,10 +13,23 @@ export function initSocket(httpServer: HttpServer): Server {
     cors: { origin: env.FRONTEND_URL, credentials: true },
   });
 
+  io.engine.on("connection_error", (err) => {
+    logCheckpoint(
+      Checkpoint.SOCKET_AUTH_FAIL,
+      {
+        code: err.code,
+        message: err.message,
+        context: err.context,
+      },
+      "warn"
+    );
+  });
+
   io.use((socket: Socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
 
     if (!token) {
+      logCheckpoint(Checkpoint.SOCKET_AUTH_FAIL, { reason: "missing_token", socketId: socket.id }, "warn");
       next(new Error("Authentication required"));
       return;
     }
@@ -25,6 +39,7 @@ export function initSocket(httpServer: HttpServer): Server {
       socket.user = { id: payload.sub, role: payload.role };
       next();
     } catch {
+      logCheckpoint(Checkpoint.SOCKET_AUTH_FAIL, { reason: "invalid_token", socketId: socket.id }, "warn");
       next(new Error("Invalid or expired token"));
     }
   });

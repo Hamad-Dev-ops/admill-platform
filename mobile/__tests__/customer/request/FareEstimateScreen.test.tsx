@@ -120,6 +120,34 @@ describe('FareEstimateScreen', () => {
     expect(body.pickupLocation).toEqual(body.destinationLocation);
   });
 
+  it('on GPS timeout, keeps the map usable, retries GPS, and lets a map tap set pickup', async () => {
+    mockCheckPermission.mockResolvedValue('granted');
+    mockGetCurrentPosition.mockImplementation((_success, error) => {
+      error!({ code: 3, message: 'Location request timed out' });
+    });
+    mock.onPost('/pricing/estimate').reply(200, {
+      success: true,
+      data: { ...fareBreakdownPayload(), serviceType: 'JUMP_START' },
+    });
+
+    const { getByText, getByTestId, queryByText } = await renderScreen('JUMP_START');
+
+    await waitFor(() => expect(getByText(/Location request timed out/)).toBeTruthy());
+    expect(getByTestId('map-view')).toBeTruthy();
+    expect(queryByText('Something went wrong')).toBeNull();
+
+    await fireEvent.press(getByText('Retry current location'));
+    expect(mockGetCurrentPosition.mock.calls.length).toBeGreaterThan(2);
+
+    await fireEvent(getByTestId('map-view'), 'press', {
+      nativeEvent: { coordinate: { latitude: 25.11, longitude: 55.22 } },
+    });
+
+    await waitFor(() => expect(getByText('AED 227.88')).toBeTruthy());
+    const body = JSON.parse(mock.history.post.find((req) => req.url === '/pricing/estimate')!.data);
+    expect(body.pickupLocation.coordinates).toEqual([55.22, 25.11]);
+  });
+
   it('for a towing service, requires a map tap before estimating, then estimates with the tapped point', async () => {
     mockCheckPermission.mockResolvedValue('granted');
     mockGetCurrentPosition.mockImplementation((success) => {
